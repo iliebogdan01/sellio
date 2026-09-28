@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClient } from "../../lib/supabase/client";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 type Listing = {
   id: number;
@@ -16,245 +17,242 @@ type Listing = {
   promoted: boolean;
   promoted_until: string | null;
   created_at: string;
+  user_id: string | null;
 };
 
-const categoryIcons: Record<string, string> = {
-  "Cars & Vehicles": "🚗",
-  Property: "🏠",
-  Electronics: "📱",
-  Fashion: "👕",
-  "Home & Garden": "🏡",
-  Gaming: "🎮",
-  "Baby & Kids": "🧸",
-  Services: "🔧",
-};
+function ListingContent() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id");
 
-export default function MyListingsPage() {
-  const [listings, setListings] = useState<Listing[]>([]);
+  const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedImage, setSelectedImage] = useState(0);
 
   useEffect(() => {
-    loadListings();
-  }, []);
-
-  async function loadListings() {
-    try {
-      setLoading(true);
-      setError("");
-
-      const supabase = createClient();
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        setError(userError.message);
-        return;
-      }
-
-      if (!user) {
-        setError("You must be logged in to see your listings.");
-        return;
-      }
-
-      const { data, error: listingsError } = await supabase
-        .from("listings")
-        .select(`
-          id,
-          title,
-          price,
-          location,
-          category,
-          description,
-          image,
-          images,
-          promoted,
-          promoted_until,
-          created_at
-        `)
-        .eq("user_id", user.id)
-        .order("created_at", {
-          ascending: false,
-        });
-
-      if (listingsError) {
-        console.error(listingsError);
-        setError(listingsError.message);
-        return;
-      }
-
-      setListings((data || []) as Listing[]);
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Something went wrong."
-      );
-    } finally {
+    if (!id) {
+      setError("Listing ID is missing.");
       setLoading(false);
-    }
-  }
-
-  function getImage(listing: Listing) {
-    if (
-      Array.isArray(listing.images) &&
-      listing.images.length > 0
-    ) {
-      return listing.images[0];
+      return;
     }
 
-    return listing.image;
-  }
+    async function loadListing() {
+      try {
+        setLoading(true);
+        setError("");
 
-  function isCurrentlyPromoted(listing: Listing) {
-    if (
-      !listing.promoted ||
-      !listing.promoted_until
-    ) {
-      return false;
+        const supabase = createClient();
+
+        const { data, error: listingError } = await supabase
+          .from("listings")
+          .select(`
+            id,
+            title,
+            price,
+            location,
+            category,
+            description,
+            image,
+            images,
+            promoted,
+            promoted_until,
+            created_at,
+            user_id
+          `)
+          .eq("id", id)
+          .single();
+
+        if (listingError) {
+          console.error(listingError);
+          setError(listingError.message);
+          setListing(null);
+          return;
+        }
+
+        if (!data) {
+          setError("Listing not found.");
+          setListing(null);
+          return;
+        }
+
+        setListing(data as Listing);
+        setSelectedImage(0);
+      } catch (err) {
+        console.error(err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Something went wrong."
+        );
+      } finally {
+        setLoading(false);
+      }
     }
 
-    return (
-      new Date(listing.promoted_until).getTime() >
-      Date.now()
-    );
+    loadListing();
+  }, [id]);
+
+  function getImages(item: Listing) {
+    if (Array.isArray(item.images) && item.images.length > 0) {
+      return item.images;
+    }
+
+    if (item.image) {
+      return [item.image];
+    }
+
+    return [];
   }
 
   function formatPrice(price: number | string) {
-    const numericPrice = Number(price || 0);
-
-    return numericPrice.toLocaleString("en-GB", {
+    return Number(price || 0).toLocaleString("en-GB", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
   }
 
-  async function deleteListing(listingId: number) {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this listing?"
-    );
-
-    if (!confirmed) return;
-
-    try {
-      setError("");
-
-      const supabase = createClient();
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setError("You must be logged in.");
-        return;
-      }
-
-      const { error: deleteError } = await supabase
-        .from("listings")
-        .delete()
-        .eq("id", listingId)
-        .eq("user_id", user.id);
-
-      if (deleteError) {
-        console.error(deleteError);
-        setError(deleteError.message);
-        return;
-      }
-
-      setListings((current) =>
-        current.filter(
-          (listing) => listing.id !== listingId
-        )
-      );
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not delete listing."
-      );
-    }
+  function formatDate(date: string) {
+    return new Date(date).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
   }
 
-  return (
-    <main className="min-h-screen bg-[#111111] text-white flex flex-col">
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#f5f5f5] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-gray-300 border-t-black rounded-full animate-spin mx-auto" />
 
-      {/* HEADER */}
+          <p className="mt-5 text-gray-500 font-medium">
+            Loading listing...
+          </p>
+        </div>
+      </main>
+    );
+  }
 
-      <header className="bg-[#080808] border-b border-[#292929] sticky top-0 z-50">
+  if (error || !listing) {
+    return (
+      <main className="min-h-screen bg-[#f5f5f5] text-gray-900 flex flex-col">
 
-        <div className="w-full px-3 sm:px-5 lg:px-7 py-3">
+        <header className="bg-white border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+            <Link
+              href="/"
+              className="text-3xl font-black text-black"
+            >
+              Sellio
+            </Link>
+          </div>
+        </header>
 
-          <div className="flex items-center gap-3">
+        <section className="flex-1 max-w-3xl w-full mx-auto px-4 py-16">
+          <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center shadow-sm">
 
-            {/* LOGO */}
+            <div className="text-6xl">
+              ⚠️
+            </div>
+
+            <h1 className="text-2xl font-black mt-5">
+              Listing not found
+            </h1>
+
+            <p className="text-gray-500 mt-3">
+              {error || "This listing does not exist."}
+            </p>
 
             <Link
               href="/"
-              className="shrink-0 text-2xl sm:text-3xl font-black tracking-tight text-white hover:opacity-80 transition"
+              className="inline-flex mt-7 bg-black text-white px-7 py-3 rounded-xl font-black hover:bg-gray-800"
+            >
+              ← Back to Sellio
+            </Link>
+
+          </div>
+        </section>
+
+        <footer className="bg-black text-gray-400 mt-auto">
+          <div className="max-w-7xl mx-auto px-4 py-8 text-center">
+            <p className="text-white text-xl font-black">
+              Sellio
+            </p>
+            <p className="text-xs mt-1">
+              Buy. Sell. Discover.
+            </p>
+          </div>
+        </footer>
+
+      </main>
+    );
+  }
+
+  const images = getImages(listing);
+
+  const currentImage =
+    images[selectedImage] || null;
+
+  const isPromoted =
+    listing.promoted &&
+    listing.promoted_until &&
+    new Date(listing.promoted_until).getTime() > Date.now();
+
+  return (
+    <main className="min-h-screen bg-[#f5f5f5] text-gray-900 flex flex-col">
+
+      {/* HEADER */}
+
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
+
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
+
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+
+            <Link
+              href="/"
+              className="text-2xl sm:text-3xl font-black tracking-tight text-black"
             >
               Sellio
             </Link>
 
-            {/* SEARCH STYLE */}
-
-            <div className="flex-1 flex justify-center">
+            <div className="flex items-center gap-2">
 
               <Link
                 href="/"
-                className="hidden sm:flex w-full max-w-xl bg-[#151515] border border-[#333333] rounded-xl px-4 py-2.5 items-center gap-3 hover:border-[#555555] transition"
+                className="hidden sm:flex px-4 py-2.5 rounded-xl hover:bg-gray-100 font-bold text-sm"
               >
-
-                <span className="text-xl">
-                  🔎
-                </span>
-
-                <span className="text-sm text-[#888888]">
-                  What are you looking for?
-                </span>
-
+                Home
               </Link>
-
-            </div>
-
-            {/* HEADER ICONS */}
-
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
 
               <Link
                 href="/favourites"
-                title="Favourites"
-                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-lg hover:bg-[#202020] text-lg transition"
+                className="px-4 py-2.5 rounded-xl hover:bg-gray-100 font-bold text-sm"
               >
                 ❤️
+                <span className="hidden sm:inline ml-2">
+                  Favourites
+                </span>
               </Link>
 
               <Link
                 href="/messages"
-                title="Messages"
-                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-lg hover:bg-[#202020] text-lg transition"
+                className="hidden sm:flex px-4 py-2.5 rounded-xl hover:bg-gray-100 font-bold text-sm"
               >
-                💬
+                💬 Messages
               </Link>
 
               <Link
                 href="/profile"
-                title="Profile"
-                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-lg hover:bg-[#202020] text-lg transition"
+                className="hidden sm:flex px-4 py-2.5 rounded-xl hover:bg-gray-100 font-bold text-sm"
               >
-                👤
+                👤 Profile
               </Link>
 
               <Link
                 href="/sell"
-                className="bg-white hover:bg-gray-200 text-black px-3 sm:px-5 py-2.5 rounded-xl font-black text-sm transition"
+                className="bg-black hover:bg-gray-800 text-white px-4 sm:px-5 py-2.5 rounded-xl font-black text-sm"
               >
                 + Sell
               </Link>
@@ -267,346 +265,313 @@ export default function MyListingsPage() {
 
       </header>
 
-      {/* CATEGORY BAR */}
+      {/* MAIN CONTENT */}
 
-      <section className="bg-[#0d0d0d] border-b border-[#292929]">
+      <section className="flex-1 w-full">
 
-        <div className="w-full px-3 sm:px-5 lg:px-7 py-3">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
-          <div className="flex gap-2 overflow-x-auto">
+          {/* BREADCRUMB */}
 
-            <Link
-              href="/"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-black text-sm font-black"
-            >
-              🏠 Home
-            </Link>
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
 
             <Link
               href="/"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-[#202020] hover:bg-[#292929] text-[#dddddd] text-sm font-semibold transition"
+              className="hover:text-black"
             >
-              🚗 Cars
+              Home
             </Link>
 
-            <Link
-              href="/"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-[#202020] hover:bg-[#292929] text-[#dddddd] text-sm font-semibold transition"
-            >
-              📱 Electronics
-            </Link>
+            <span>›</span>
 
-            <Link
-              href="/"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-[#202020] hover:bg-[#292929] text-[#dddddd] text-sm font-semibold transition"
-            >
-              👕 Fashion
-            </Link>
+            {listing.category && (
+              <>
+                <span>
+                  {listing.category}
+                </span>
 
-            <Link
-              href="/"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-[#202020] hover:bg-[#292929] text-[#dddddd] text-sm font-semibold transition"
-            >
-              🏠 Property
-            </Link>
+                <span>›</span>
+              </>
+            )}
 
-            <Link
-              href="/"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-[#202020] hover:bg-[#292929] text-[#dddddd] text-sm font-semibold transition"
-            >
-              🎮 Gaming
-            </Link>
+            <span className="text-gray-900 font-medium truncate">
+              {listing.title}
+            </span>
 
           </div>
 
-        </div>
+          {/* PROMOTED */}
 
-      </section>
-
-      {/* MAIN */}
-
-      <section className="flex-1 w-full px-3 sm:px-5 lg:px-7 py-8">
-
-        <div className="w-full max-w-7xl mx-auto">
-
-          {/* TITLE */}
-
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-5 mb-8">
-
-            <div>
-
-              <p className="text-xs uppercase tracking-[0.25em] font-bold text-[#777777]">
-                Sellio Account
-              </p>
-
-              <h1 className="text-3xl sm:text-4xl font-black mt-2">
-                My Listings
-              </h1>
-
-              <p className="text-[#888888] mt-2">
-                Manage your products, edit them or promote them.
-              </p>
-
+          {isPromoted && (
+            <div className="mb-5">
+              <span className="inline-flex items-center gap-2 bg-black text-white px-4 py-2 rounded-xl text-sm font-black">
+                🚀 PROMOTED LISTING
+              </span>
             </div>
-
-            <div className="bg-white text-black rounded-xl px-6 py-4 shadow-lg">
-
-              <p className="text-xs uppercase tracking-wide font-bold text-gray-500">
-                Total listings
-              </p>
-
-              <p className="text-3xl font-black mt-1">
-                {listings.length}
-              </p>
-
-            </div>
-
-          </div>
-
-          {/* ERROR */}
-
-          {error && (
-
-            <div className="mb-6 bg-[#241414] border border-[#5a2929] text-[#ffb5b5] rounded-xl px-5 py-4">
-
-              <p className="font-black">
-                Something went wrong
-              </p>
-
-              <p className="text-sm mt-1">
-                {error}
-              </p>
-
-            </div>
-
           )}
 
-          {/* LOADING */}
+          {/* CONTENT */}
 
-          {loading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_390px] gap-6">
 
-            <div className="bg-[#181818] border border-[#303030] rounded-2xl p-16 text-center">
+            {/* LEFT */}
 
-              <div className="w-11 h-11 border-4 border-[#333333] border-t-white rounded-full animate-spin mx-auto" />
+            <div className="space-y-6">
 
-              <p className="mt-4 text-[#888888]">
-                Loading your listings...
-              </p>
+              {/* IMAGE */}
 
-            </div>
+              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
 
-          ) : listings.length === 0 ? (
+                <div className="bg-[#eeeeee] w-full">
 
-            /* EMPTY */
+                  {currentImage ? (
+                    <div className="w-full h-[360px] sm:h-[500px] lg:h-[600px] flex items-center justify-center bg-gray-100">
 
-            <div className="bg-[#181818] border border-[#303030] rounded-2xl p-12 text-center">
+                      <img
+                        src={currentImage}
+                        alt={listing.title}
+                        className="w-full h-full object-contain"
+                      />
 
-              <div className="text-7xl">
-                📦
-              </div>
+                    </div>
+                  ) : (
+                    <div className="w-full h-[360px] sm:h-[500px] lg:h-[600px] flex items-center justify-center bg-gray-100 text-8xl">
+                      📷
+                    </div>
+                  )}
 
-              <h2 className="text-2xl font-black mt-5">
-                You have no listings yet
-              </h2>
+                </div>
 
-              <p className="text-[#888888] mt-2 max-w-md mx-auto">
-                Create your first listing and start selling on Sellio.
-              </p>
+                {images.length > 1 && (
+                  <div className="p-4 border-t border-gray-200">
 
-              <Link
-                href="/sell"
-                className="inline-flex mt-6 bg-white hover:bg-gray-200 text-black px-7 py-3 rounded-xl font-black transition"
-              >
-                + Create Listing
-              </Link>
+                    <div className="flex gap-3 overflow-x-auto">
 
-            </div>
+                      {images.map((src, index) => (
 
-          ) : (
-
-            /* LISTINGS */
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-
-              {listings.map((listing) => {
-
-                const image = getImage(listing);
-                const promoted =
-                  isCurrentlyPromoted(listing);
-
-                const categoryIcon =
-                  categoryIcons[
-                    listing.category || ""
-                  ] || "📦";
-
-                return (
-
-                  <article
-                    key={listing.id}
-                    className={`bg-[#181818] border rounded-2xl overflow-hidden hover:shadow-2xl transition ${
-                      promoted
-                        ? "border-orange-500/70"
-                        : "border-[#303030] hover:border-[#555555]"
-                    }`}
-                  >
-
-                    {/* IMAGE */}
-
-                    <Link
-                      href={`/listing?id=${encodeURIComponent(
-                        String(listing.id)
-                      )}`}
-                      className="block relative"
-                    >
-
-                      {image ? (
-
-                        <img
-                          src={image}
-                          alt={listing.title}
-                          className="w-full h-40 sm:h-48 lg:h-52 object-cover"
-                        />
-
-                      ) : (
-
-                        <div className="w-full h-40 sm:h-48 lg:h-52 bg-[#222222] flex items-center justify-center text-5xl">
-                          📷
-                        </div>
-
-                      )}
-
-                      {promoted && (
-
-                        <span className="absolute top-2 left-2 bg-orange-500 text-white text-[10px] uppercase tracking-wide font-black px-2.5 py-1 rounded-lg shadow-lg">
-                          🚀 Promoted
-                        </span>
-
-                      )}
-
-                    </Link>
-
-                    {/* INFO */}
-
-                    <div className="p-3 sm:p-4">
-
-                      {listing.category && (
-
-                        <div className="flex items-center gap-1.5 text-[10px] sm:text-xs uppercase tracking-wide text-[#888888] font-bold truncate">
-
-                          <span className="text-base">
-                            {categoryIcon}
-                          </span>
-
-                          <span className="truncate">
-                            {listing.category}
-                          </span>
-
-                        </div>
-
-                      )}
-
-                      <h2 className="font-black text-sm sm:text-base mt-2 line-clamp-2 min-h-[40px] text-white">
-                        {listing.title || "Untitled listing"}
-                      </h2>
-
-                      <p className="text-lg sm:text-xl font-black mt-2 text-white">
-                        £{formatPrice(listing.price)}
-                      </p>
-
-                      {listing.location && (
-
-                        <p className="text-xs text-[#777777] mt-1.5 truncate">
-                          📍 {listing.location}
-                        </p>
-
-                      )}
-
-                      {/* ACTIONS */}
-
-                      <div className="grid grid-cols-2 gap-2 mt-4">
-
-                        <Link
-                          href={`/listing?id=${encodeURIComponent(
-                            String(listing.id)
-                          )}`}
-                          className="text-center bg-white hover:bg-gray-200 text-black py-2.5 rounded-xl text-xs sm:text-sm font-black transition"
+                        <button
+                          key={`${src}-${index}`}
+                          type="button"
+                          onClick={() =>
+                            setSelectedImage(index)
+                          }
+                          className={`shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden border-2 transition ${
+                            selectedImage === index
+                              ? "border-black"
+                              : "border-transparent hover:border-gray-400"
+                          }`}
                         >
-                          👁 View
-                        </Link>
 
-                        <Link
-                          href={`/edit-listing?id=${encodeURIComponent(
-                            String(listing.id)
-                          )}`}
-                          className="text-center bg-[#292929] hover:bg-[#353535] text-white py-2.5 rounded-xl text-xs sm:text-sm font-bold transition"
-                        >
-                          ✏️ Edit
-                        </Link>
+                          <img
+                            src={src}
+                            alt={`${listing.title} ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
 
-                      </div>
+                        </button>
 
-                      {/* PROMOTE */}
-
-                      <Link
-                        href={`/promote?listing=${encodeURIComponent(
-                          String(listing.id)
-                        )}`}
-                        className="block mt-2 bg-white hover:bg-gray-200 text-black text-center py-2.5 rounded-xl text-xs sm:text-sm font-black transition"
-                      >
-                        🚀 Promote Listing
-                      </Link>
-
-                      {/* DELETE */}
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          deleteListing(listing.id)
-                        }
-                        className="w-full mt-2 border border-[#552f2f] text-[#ff9b9b] hover:bg-[#291717] py-2.5 rounded-xl text-xs sm:text-sm font-bold transition"
-                      >
-                        🗑 Delete Listing
-                      </button>
+                      ))}
 
                     </div>
 
-                  </article>
+                  </div>
+                )}
 
-                );
-              })}
+              </div>
+
+              {/* DESCRIPTION */}
+
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-7 shadow-sm">
+
+                <h2 className="text-xl sm:text-2xl font-black">
+                  Description
+                </h2>
+
+                <div className="border-t border-gray-200 mt-5 pt-5">
+
+                  <p className="text-gray-700 leading-7 whitespace-pre-wrap">
+                    {listing.description ||
+                      "No description provided."}
+                  </p>
+
+                </div>
+
+              </div>
+
+              {/* LISTING INFORMATION */}
+
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-7 shadow-sm">
+
+                <h2 className="text-xl font-black">
+                  Listing information
+                </h2>
+
+                <div className="grid sm:grid-cols-2 gap-5 mt-6">
+
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+                      Category
+                    </p>
+
+                    <p className="font-bold mt-1">
+                      {listing.category || "Not specified"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+                      Location
+                    </p>
+
+                    <p className="font-bold mt-1">
+                      {listing.location || "Not specified"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+                      Posted
+                    </p>
+
+                    <p className="font-bold mt-1">
+                      {formatDate(listing.created_at)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+                      Listing ID
+                    </p>
+
+                    <p className="font-bold mt-1">
+                      #{listing.id}
+                    </p>
+                  </div>
+
+                </div>
+
+              </div>
 
             </div>
 
-          )}
+            {/* RIGHT */}
 
-        </div>
+            <aside>
 
-      </section>
+              <div className="lg:sticky lg:top-24 space-y-5">
 
-      {/* CTA */}
+                {/* PRICE */}
 
-      <section className="w-full px-3 sm:px-5 lg:px-7 pb-8">
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-7 shadow-sm">
 
-        <div className="w-full max-w-7xl mx-auto bg-white text-black rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-5">
+                  {listing.category && (
+                    <p className="text-xs uppercase tracking-[0.18em] text-gray-400 font-black">
+                      {listing.category}
+                    </p>
+                  )}
 
-          <div>
+                  <h1 className="text-2xl sm:text-3xl font-black mt-2 leading-tight">
+                    {listing.title}
+                  </h1>
 
-            <p className="text-xl sm:text-2xl font-black">
-              Have something else to sell?
-            </p>
+                  <p className="text-3xl sm:text-4xl font-black mt-5">
+                    £{formatPrice(listing.price)}
+                  </p>
 
-            <p className="text-gray-500 text-sm mt-1">
-              Create another listing on Sellio.
-            </p>
+                  {listing.location && (
+                    <p className="text-gray-500 mt-4">
+                      📍 {listing.location}
+                    </p>
+                  )}
+
+                </div>
+
+                {/* SELLER */}
+
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-7 shadow-sm">
+
+                  <h2 className="text-xl font-black">
+                    Seller
+                  </h2>
+
+                  <div className="flex items-center gap-3 mt-5">
+
+                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-xl">
+                      👤
+                    </div>
+
+                    <div>
+                      <p className="font-black">
+                        Sellio Seller
+                      </p>
+
+                      <p className="text-sm text-gray-500">
+                        Marketplace seller
+                      </p>
+                    </div>
+
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.href =
+                        `/messages?listing=${encodeURIComponent(
+                          String(listing.id)
+                        )}`;
+                    }}
+                    className="w-full mt-6 bg-black hover:bg-gray-800 text-white py-4 rounded-xl font-black transition"
+                  >
+                    💬 Contact Seller
+                  </button>
+
+                  <button
+                    type="button"
+                    className="w-full mt-3 border-2 border-gray-200 hover:border-black bg-white py-4 rounded-xl font-black transition"
+                  >
+                    ♡ Add to Favourites
+                  </button>
+
+                </div>
+
+                {/* SAFETY */}
+
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+
+                  <h3 className="font-black">
+                    Stay safe
+                  </h3>
+
+                  <div className="mt-4 space-y-3 text-sm text-gray-600">
+
+                    <p>
+                      ✓ Meet in a safe public place
+                    </p>
+
+                    <p>
+                      ✓ Check the item before paying
+                    </p>
+
+                    <p>
+                      ✓ Never send money before checking the item
+                    </p>
+
+                  </div>
+
+                </div>
+
+                <Link
+                  href="/sell"
+                  className="block text-center bg-white border-2 border-gray-200 hover:border-black rounded-xl py-4 font-black transition"
+                >
+                  + Sell something
+                </Link>
+
+              </div>
+
+            </aside>
 
           </div>
-
-          <Link
-            href="/sell"
-            className="bg-black hover:bg-[#222222] text-white px-6 py-3 rounded-xl font-black transition"
-          >
-            + Create Listing
-          </Link>
 
         </div>
 
@@ -614,64 +579,58 @@ export default function MyListingsPage() {
 
       {/* FOOTER */}
 
-      <footer className="bg-[#080808] border-t border-[#292929]">
+      <footer className="bg-black text-gray-400 mt-auto">
 
-        <div className="w-full px-3 sm:px-5 lg:px-7 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
           <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
 
             <div className="text-center sm:text-left">
 
-              <p className="text-white font-black text-xl">
+              <p className="text-white text-xl font-black">
                 Sellio
               </p>
 
-              <p className="text-[#666666] text-xs mt-1">
+              <p className="text-xs mt-1">
                 Buy. Sell. Discover.
               </p>
 
             </div>
 
-            <div className="flex flex-wrap justify-center gap-5 text-sm text-[#888888]">
+            <div className="flex flex-wrap justify-center gap-5 text-sm">
 
-              <Link
-                href="/"
-                className="hover:text-white transition"
-              >
+              <Link href="/" className="hover:text-white">
                 Home
               </Link>
 
-              <Link
-                href="/sell"
-                className="hover:text-white transition"
-              >
+              <Link href="/sell" className="hover:text-white">
                 Sell
               </Link>
 
               <Link
                 href="/my-listings"
-                className="text-white font-bold"
+                className="hover:text-white"
               >
                 My Listings
               </Link>
 
               <Link
                 href="/favourites"
-                className="hover:text-white transition"
+                className="hover:text-white"
               >
                 Favourites
               </Link>
 
               <Link
                 href="/messages"
-                className="hover:text-white transition"
+                className="hover:text-white"
               >
                 Messages
               </Link>
 
               <Link
                 href="/profile"
-                className="hover:text-white transition"
+                className="hover:text-white"
               >
                 Profile
               </Link>
@@ -685,5 +644,29 @@ export default function MyListingsPage() {
       </footer>
 
     </main>
+  );
+}
+
+export default function ListingPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-[#f5f5f5] flex items-center justify-center">
+
+          <div className="text-center">
+
+            <div className="w-12 h-12 border-4 border-gray-300 border-t-black rounded-full animate-spin mx-auto" />
+
+            <p className="mt-5 text-gray-500">
+              Loading...
+            </p>
+
+          </div>
+
+        </main>
+      }
+    >
+      <ListingContent />
+    </Suspense>
   );
 }
