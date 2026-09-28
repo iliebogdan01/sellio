@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -17,35 +17,33 @@ type Listing = {
   promoted: boolean;
   promoted_until: string | null;
   created_at: string;
-  user_id?: string | null;
+  user_id: string | null;
 };
 
-function ListingContent() {
+function ListingPageContent() {
   const searchParams = useSearchParams();
-  const id = searchParams.get("id");
+  const listingId = searchParams.get("id");
 
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
   const [selectedImage, setSelectedImage] = useState(0);
-  const [favourite, setFavourite] = useState(false);
 
   useEffect(() => {
-    if (!id) {
-      setError("Listing ID is missing.");
-      setLoading(false);
-      return;
-    }
-
     async function loadListing() {
+      if (!listingId) {
+        setError("Listing ID is missing.");
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError("");
 
         const supabase = createClient();
 
-        const { data, error: listingError } = await supabase
+        const { data, error: supabaseError } = await supabase
           .from("listings")
           .select(`
             id,
@@ -61,18 +59,18 @@ function ListingContent() {
             created_at,
             user_id
           `)
-          .eq("id", id)
-          .single();
+          .eq("id", listingId)
+          .maybeSingle();
 
-        if (listingError) {
-          console.error(listingError);
-          setError(listingError.message);
+        if (supabaseError) {
+          console.error("Supabase error:", supabaseError);
+          setError(supabaseError.message);
           setListing(null);
           return;
         }
 
         if (!data) {
-          setError("Listing not found.");
+          setError("This listing could not be found.");
           setListing(null);
           return;
         }
@@ -80,12 +78,12 @@ function ListingContent() {
         setListing(data as Listing);
         setSelectedImage(0);
       } catch (err) {
-        console.error(err);
+        console.error("Listing error:", err);
 
         setError(
           err instanceof Error
             ? err.message
-            : "Something went wrong."
+            : "Something went wrong while loading the listing."
         );
       } finally {
         setLoading(false);
@@ -93,66 +91,74 @@ function ListingContent() {
     }
 
     loadListing();
-  }, [id]);
+  }, [listingId]);
 
-  function getImages(item: Listing) {
+  function getImages(item: Listing): string[] {
+    const result: string[] = [];
+
+    if (Array.isArray(item.images)) {
+      for (const image of item.images) {
+        if (
+          typeof image === "string" &&
+          image.trim() !== "" &&
+          !result.includes(image)
+        ) {
+          result.push(image);
+        }
+      }
+    }
+
     if (
-      Array.isArray(item.images) &&
-      item.images.length > 0
+      typeof item.image === "string" &&
+      item.image.trim() !== "" &&
+      !result.includes(item.image)
     ) {
-      return item.images;
+      result.push(item.image);
     }
 
-    if (item.image) {
-      return [item.image];
-    }
-
-    return [];
+    return result;
   }
 
   function formatPrice(price: number | string) {
-    return Number(price || 0).toLocaleString("en-GB", {
+    const value = Number(price);
+
+    if (Number.isNaN(value)) {
+      return "0.00";
+    }
+
+    return value.toLocaleString("en-GB", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
   }
 
-  function previousImage(total: number) {
-    if (total <= 1) return;
+  function formatDate(date: string) {
+    if (!date) {
+      return "Unknown";
+    }
 
-    setSelectedImage((current) =>
-      current === 0 ? total - 1 : current - 1
-    );
+    return new Date(date).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
   }
 
-  function nextImage(total: number) {
-    if (total <= 1) return;
+  function isPromoted(item: Listing) {
+    if (!item.promoted || !item.promoted_until) {
+      return false;
+    }
 
-    setSelectedImage((current) =>
-      current === total - 1 ? 0 : current + 1
-    );
-  }
-
-  function contactSeller() {
-    if (!listing) return;
-
-    window.location.href =
-      `/messages?listing=${encodeURIComponent(
-        String(listing.id)
-      )}`;
-  }
-
-  function toggleFavourite() {
-    setFavourite((current) => !current);
+    return new Date(item.promoted_until).getTime() > Date.now();
   }
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#f4f4f4] text-[#111] flex items-center justify-center">
+      <main className="min-h-screen bg-[#f5f5f5] flex items-center justify-center">
         <div className="text-center">
-          <div className="w-11 h-11 border-4 border-gray-300 border-t-black rounded-full animate-spin mx-auto" />
+          <div className="mx-auto h-12 w-12 rounded-full border-4 border-gray-200 border-t-black animate-spin" />
 
-          <p className="mt-5 text-gray-500">
+          <p className="mt-5 text-gray-500 font-semibold">
             Loading listing...
           </p>
         </div>
@@ -162,26 +168,21 @@ function ListingContent() {
 
   if (error || !listing) {
     return (
-      <main className="min-h-screen bg-[#f4f4f4] text-[#111] flex flex-col">
-
+      <main className="min-h-screen bg-[#f5f5f5] text-gray-900">
         <header className="bg-white border-b border-gray-200">
-          <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
             <Link
               href="/"
-              className="text-2xl sm:text-3xl font-black"
+              className="text-3xl font-black text-black no-underline"
             >
               Sellio
             </Link>
           </div>
         </header>
 
-        <section className="flex-1 max-w-3xl w-full mx-auto px-4 py-16">
-
+        <div className="max-w-3xl mx-auto px-4 py-16">
           <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center shadow-sm">
-
-            <div className="text-5xl">
-              ⚠️
-            </div>
+            <div className="text-6xl">⚠️</div>
 
             <h1 className="text-2xl font-black mt-5">
               Listing not found
@@ -193,15 +194,12 @@ function ListingContent() {
 
             <Link
               href="/"
-              className="inline-flex mt-7 bg-black hover:bg-gray-800 text-white px-6 py-3 rounded-xl font-black transition"
+              className="inline-flex mt-7 bg-black text-white px-7 py-3 rounded-xl font-black no-underline hover:bg-gray-800 transition"
             >
-              Back to Home
+              ← Back to Sellio
             </Link>
-
           </div>
-
-        </section>
-
+        </div>
       </main>
     );
   }
@@ -209,547 +207,419 @@ function ListingContent() {
   const images = getImages(listing);
 
   const currentImage =
-    images[selectedImage] || null;
+    images[selectedImage] || images[0] || null;
 
-  const isPromoted =
-    listing.promoted &&
-    !!listing.promoted_until &&
-    new Date(listing.promoted_until).getTime() >
-      Date.now();
+  const promoted = isPromoted(listing);
 
   return (
-    <main className="min-h-screen bg-[#f4f4f4] text-[#111] flex flex-col">
+    <main className="min-h-screen bg-[#f5f5f5] text-gray-900">
 
       {/* HEADER */}
 
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-3">
-
-          <div className="flex items-center gap-4">
-
-            {/* LOGO */}
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
+          <div className="max-w-7xl mx-auto flex items-center gap-4">
 
             <Link
               href="/"
-              className="text-2xl sm:text-3xl font-black tracking-tight shrink-0"
+              className="shrink-0 text-2xl sm:text-3xl font-black tracking-tight text-black no-underline"
             >
               Sellio
             </Link>
 
-            {/* SEARCH */}
+            <div className="flex-1" />
 
-            <Link
-              href="/"
-              className="hidden md:flex flex-1 max-w-2xl mx-auto bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 items-center gap-3 hover:border-gray-400 transition"
-            >
-              <span className="text-lg">
-                🔎
-              </span>
+            <nav className="flex items-center gap-1 sm:gap-2 shrink-0">
 
-              <span className="text-sm text-gray-500">
-                Search for anything...
-              </span>
-            </Link>
-
-            {/* NAV */}
-
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+              <Link
+                href="/"
+                className="hidden sm:flex items-center px-4 py-2.5 rounded-xl hover:bg-gray-100 font-bold text-sm transition no-underline text-black"
+              >
+                Home
+              </Link>
 
               <Link
                 href="/favourites"
-                title="Favourites"
-                className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 transition"
+                className="flex items-center px-3 sm:px-4 py-2.5 rounded-xl hover:bg-gray-100 font-bold text-sm transition no-underline text-black"
               >
-                ❤️
+                <span>❤️</span>
+
+                <span className="hidden sm:inline ml-2">
+                  Favourites
+                </span>
               </Link>
 
               <Link
                 href="/messages"
-                title="Messages"
-                className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 transition"
+                className="hidden sm:flex items-center px-4 py-2.5 rounded-xl hover:bg-gray-100 font-bold text-sm transition no-underline text-black"
               >
                 💬
+                <span className="ml-2">
+                  Messages
+                </span>
               </Link>
 
               <Link
                 href="/profile"
-                title="Profile"
-                className="hidden sm:flex w-10 h-10 items-center justify-center rounded-xl hover:bg-gray-100 transition"
+                className="hidden sm:flex items-center px-4 py-2.5 rounded-xl hover:bg-gray-100 font-bold text-sm transition no-underline text-black"
               >
                 👤
+                <span className="ml-2">
+                  Profile
+                </span>
               </Link>
 
               <Link
                 href="/sell"
-                className="bg-black hover:bg-gray-800 text-white px-4 sm:px-5 py-2.5 rounded-xl font-black text-sm transition"
+                className="ml-1 bg-black hover:bg-gray-800 text-white px-4 sm:px-5 py-2.5 rounded-xl font-black text-sm transition no-underline"
               >
                 + Sell
               </Link>
 
-            </div>
-
+            </nav>
           </div>
-
         </div>
-
       </header>
 
-      {/* BREADCRUMBS */}
+      {/* PAGE */}
 
-      <div className="w-full bg-white border-b border-gray-200">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+        {/* BREADCRUMB */}
 
-          <div className="flex items-center gap-2 text-sm overflow-x-auto whitespace-nowrap">
-
-            <Link
-              href="/"
-              className="text-gray-500 hover:text-black"
-            >
-              Home
-            </Link>
-
-            <span className="text-gray-400">
-              /
-            </span>
-
-            {listing.category && (
-              <>
-                <Link
-                  href="/"
-                  className="text-gray-500 hover:text-black"
-                >
-                  {listing.category}
-                </Link>
-
-                <span className="text-gray-400">
-                  /
-                </span>
-              </>
-            )}
-
-            <span className="font-semibold truncate">
-              {listing.title}
-            </span>
-
-          </div>
-
-        </div>
-
-      </div>
-
-      {/* MAIN */}
-
-      <section className="flex-1 w-full">
-
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8">
-
-          {/* BACK */}
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-6 overflow-hidden">
 
           <Link
             href="/"
-            className="inline-flex items-center text-sm font-bold text-gray-500 hover:text-black mb-5"
+            className="hover:text-black no-underline text-gray-500 shrink-0"
           >
-            ← Back to listings
+            Home
           </Link>
 
-          {/* PRODUCT AREA */}
+          <span>›</span>
 
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-6">
+          {listing.category && (
+            <>
+              <span className="shrink-0">
+                {listing.category}
+              </span>
 
-            {/* LEFT - GALLERY */}
+              <span>›</span>
+            </>
+          )}
 
-            <div className="min-w-0">
+          <span className="text-gray-900 font-medium truncate">
+            {listing.title}
+          </span>
+        </div>
 
-              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+        {/* PROMOTED */}
 
-                {/* MAIN PHOTO */}
+        {promoted && (
+          <div className="mb-5">
+            <span className="inline-flex items-center gap-2 bg-black text-white px-4 py-2 rounded-xl text-sm font-black">
+              🚀 PROMOTED
+            </span>
+          </div>
+        )}
 
-                <div className="relative bg-[#111]">
+        {/* CONTENT */}
 
-                  {currentImage ? (
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_390px] gap-6">
 
-                    <div className="w-full min-h-[320px] sm:min-h-[500px] lg:min-h-[600px] max-h-[700px] flex items-center justify-center">
+          {/* LEFT */}
 
-                      <img
-                        src={currentImage}
-                        alt={listing.title}
-                        className="max-w-full max-h-[700px] w-auto h-auto object-contain"
-                      />
+          <div className="space-y-6">
 
-                    </div>
+            {/* GALLERY */}
 
-                  ) : (
+            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
 
-                    <div className="h-[400px] flex items-center justify-center text-7xl text-gray-500">
-                      📷
-                    </div>
+              {/* MAIN IMAGE */}
 
-                  )}
+              <div className="relative bg-[#eeeeee]">
 
-                  {/* PROMOTED */}
+                {currentImage ? (
+                  <div className="w-full h-[380px] sm:h-[520px] lg:h-[600px] flex items-center justify-center bg-[#eeeeee]">
 
-                  {isPromoted && (
-                    <div className="absolute top-4 left-4 bg-black text-white px-3 py-2 rounded-lg text-xs font-black shadow-lg">
-                      ★ PROMOTED
-                    </div>
-                  )}
+                    <img
+                      src={currentImage}
+                      alt={listing.title}
+                      className="max-w-full max-h-full w-full h-full object-contain"
+                    />
 
-                  {/* LEFT BUTTON */}
+                  </div>
+                ) : (
+                  <div className="w-full h-[380px] sm:h-[520px] lg:h-[600px] flex items-center justify-center text-8xl bg-gray-100">
+                    📷
+                  </div>
+                )}
 
-                  {images.length > 1 && (
+                {/* IMAGE COUNTER */}
+
+                {images.length > 0 && (
+                  <div className="absolute bottom-4 right-4 bg-black/75 text-white px-3 py-1.5 rounded-lg text-xs font-bold">
+                    {selectedImage + 1} / {images.length}
+                  </div>
+                )}
+
+                {/* PREVIOUS */}
+
+                {images.length > 1 && (
+                  <>
                     <button
                       type="button"
                       onClick={() =>
-                        previousImage(images.length)
+                        setSelectedImage(
+                          selectedImage === 0
+                            ? images.length - 1
+                            : selectedImage - 1
+                        )
                       }
-                      className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/95 hover:bg-white text-black shadow-lg text-3xl flex items-center justify-center transition"
-                      aria-label="Previous image"
+                      className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/70 hover:bg-black text-white flex items-center justify-center text-xl transition"
                     >
                       ‹
                     </button>
-                  )}
 
-                  {/* RIGHT BUTTON */}
-
-                  {images.length > 1 && (
                     <button
                       type="button"
                       onClick={() =>
-                        nextImage(images.length)
+                        setSelectedImage(
+                          selectedImage === images.length - 1
+                            ? 0
+                            : selectedImage + 1
+                        )
                       }
-                      className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/95 hover:bg-white text-black shadow-lg text-3xl flex items-center justify-center transition"
-                      aria-label="Next image"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/70 hover:bg-black text-white flex items-center justify-center text-xl transition"
                     >
                       ›
                     </button>
-                  )}
-
-                  {/* COUNTER */}
-
-                  {images.length > 0 && (
-                    <div className="absolute bottom-4 right-4 bg-black/75 text-white px-3 py-2 rounded-lg text-xs font-bold">
-                      {selectedImage + 1} / {images.length}
-                    </div>
-                  )}
-
-                </div>
-
-                {/* THUMBNAILS */}
-
-                {images.length > 1 && (
-
-                  <div className="p-3 sm:p-4 border-t border-gray-200">
-
-                    <div className="flex gap-3 overflow-x-auto">
-
-                      {images.map(
-                        (src, index) => (
-
-                          <button
-                            key={`${src}-${index}`}
-                            type="button"
-                            onClick={() =>
-                              setSelectedImage(index)
-                            }
-                            className={`relative shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden border-2 transition ${
-                              selectedImage === index
-                                ? "border-black"
-                                : "border-transparent hover:border-gray-400"
-                            }`}
-                          >
-
-                            <img
-                              src={src}
-                              alt={`${listing.title} ${index + 1}`}
-                              className="w-full h-full object-cover"
-                            />
-
-                            {selectedImage === index && (
-                              <div className="absolute inset-0 ring-2 ring-inset ring-black" />
-                            )}
-
-                          </button>
-
-                        )
-                      )}
-
-                    </div>
-
-                  </div>
-
+                  </>
                 )}
-
               </div>
 
-              {/* DESCRIPTION */}
+              {/* THUMBNAILS */}
 
-              <div className="bg-white border border-gray-200 rounded-2xl mt-6 p-5 sm:p-7 shadow-sm">
+              {images.length > 1 && (
+                <div className="p-4 border-t border-gray-200">
 
-                <h2 className="text-xl sm:text-2xl font-black">
-                  Description
-                </h2>
+                  <div className="flex gap-3 overflow-x-auto pb-1">
 
-                <div className="h-px bg-gray-200 my-5" />
+                    {images.map((src, index) => (
+                      <button
+                        key={`${src}-${index}`}
+                        type="button"
+                        onClick={() => setSelectedImage(index)}
+                        className={`relative shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden border-2 transition ${
+                          selectedImage === index
+                            ? "border-black"
+                            : "border-transparent hover:border-gray-400"
+                        }`}
+                      >
+                        <img
+                          src={src}
+                          alt={`${listing.title} ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+
+                        {selectedImage === index && (
+                          <div className="absolute inset-0 bg-black/10" />
+                        )}
+                      </button>
+                    ))}
+
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* DESCRIPTION */}
+
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-7 shadow-sm">
+
+              <h2 className="text-xl sm:text-2xl font-black">
+                Description
+              </h2>
+
+              <div className="border-t border-gray-200 mt-5 pt-5">
 
                 <p className="text-gray-700 leading-7 whitespace-pre-wrap">
-                  {listing.description ||
-                    "No description provided."}
+                  {listing.description || "No description provided."}
                 </p>
 
               </div>
+            </div>
 
-              {/* LISTING INFORMATION */}
+            {/* INFORMATION */}
 
-              <div className="bg-white border border-gray-200 rounded-2xl mt-6 p-5 sm:p-7 shadow-sm">
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-7 shadow-sm">
 
-                <h2 className="text-xl font-black">
-                  Listing information
-                </h2>
+              <h2 className="text-xl font-black">
+                Listing information
+              </h2>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">
+              <div className="grid sm:grid-cols-2 gap-5 mt-6">
 
-                  <div className="bg-gray-50 rounded-xl p-4">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+                    Category
+                  </p>
 
-                    <p className="text-xs uppercase tracking-wide text-gray-500 font-bold">
-                      Category
-                    </p>
+                  <p className="font-bold mt-1">
+                    {listing.category || "Not specified"}
+                  </p>
+                </div>
 
-                    <p className="font-bold mt-1">
-                      {listing.category ||
-                        "Not specified"}
-                    </p>
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+                    Location
+                  </p>
 
-                  </div>
+                  <p className="font-bold mt-1">
+                    {listing.location || "Not specified"}
+                  </p>
+                </div>
 
-                  <div className="bg-gray-50 rounded-xl p-4">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+                    Posted
+                  </p>
 
-                    <p className="text-xs uppercase tracking-wide text-gray-500 font-bold">
-                      Location
-                    </p>
+                  <p className="font-bold mt-1">
+                    {formatDate(listing.created_at)}
+                  </p>
+                </div>
 
-                    <p className="font-bold mt-1">
-                      {listing.location ||
-                        "Not specified"}
-                    </p>
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+                    Listing ID
+                  </p>
 
-                  </div>
-
-                  <div className="bg-gray-50 rounded-xl p-4">
-
-                    <p className="text-xs uppercase tracking-wide text-gray-500 font-bold">
-                      Posted
-                    </p>
-
-                    <p className="font-bold mt-1">
-                      {new Date(
-                        listing.created_at
-                      ).toLocaleDateString("en-GB")}
-                    </p>
-
-                  </div>
-
-                  <div className="bg-gray-50 rounded-xl p-4">
-
-                    <p className="text-xs uppercase tracking-wide text-gray-500 font-bold">
-                      Listing ID
-                    </p>
-
-                    <p className="font-bold mt-1">
-                      #{listing.id}
-                    </p>
-
-                  </div>
-
+                  <p className="font-bold mt-1">
+                    #{listing.id}
+                  </p>
                 </div>
 
               </div>
-
             </div>
 
-            {/* RIGHT - LISTING DETAILS */}
+          </div>
 
-            <aside className="lg:sticky lg:top-24 h-fit">
+          {/* RIGHT */}
 
-              <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 shadow-sm">
+          <aside>
 
-                {/* CATEGORY */}
+            <div className="lg:sticky lg:top-24 space-y-5">
+
+              {/* PRODUCT INFO */}
+
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-7 shadow-sm">
 
                 {listing.category && (
-                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500 font-black">
+                  <p className="text-xs uppercase tracking-[0.18em] text-gray-400 font-black">
                     {listing.category}
                   </p>
                 )}
 
-                {/* TITLE */}
-
-                <h1 className="text-2xl sm:text-3xl font-black leading-tight mt-2">
+                <h1 className="text-2xl sm:text-3xl font-black mt-2 leading-tight">
                   {listing.title}
                 </h1>
-
-                {/* PRICE */}
 
                 <p className="text-3xl sm:text-4xl font-black mt-5">
                   £{formatPrice(listing.price)}
                 </p>
 
-                {/* LOCATION */}
-
                 {listing.location && (
-                  <p className="text-gray-500 mt-4 flex items-center gap-2">
-                    <span>
-                      📍
-                    </span>
-
-                    <span>
-                      {listing.location}
-                    </span>
+                  <p className="text-gray-500 mt-4">
+                    📍 {listing.location}
                   </p>
                 )}
 
-                <div className="h-px bg-gray-200 my-6" />
+              </div>
 
-                {/* SELLER */}
+              {/* SELLER */}
 
-                <div>
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-7 shadow-sm">
 
-                  <h2 className="text-lg font-black">
-                    Seller
-                  </h2>
+                <h2 className="text-xl font-black">
+                  Seller
+                </h2>
 
-                  <p className="text-sm text-gray-500 mt-1">
-                    Contact the seller about this listing.
-                  </p>
+                <div className="flex items-center gap-3 mt-5">
+
+                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-xl">
+                    👤
+                  </div>
+
+                  <div>
+                    <p className="font-black">
+                      Sellio Seller
+                    </p>
+
+                    <p className="text-sm text-gray-500">
+                      Marketplace seller
+                    </p>
+                  </div>
 
                 </div>
-
-                {/* CONTACT */}
-
-                <button
-                  type="button"
-                  onClick={contactSeller}
-                  className="w-full mt-5 bg-black hover:bg-gray-800 text-white py-3.5 rounded-xl font-black transition"
-                >
-                  💬 Contact Seller
-                </button>
-
-                {/* FAVOURITE */}
-
-                <button
-                  type="button"
-                  onClick={toggleFavourite}
-                  className={`w-full mt-3 py-3.5 rounded-xl font-black border-2 transition ${
-                    favourite
-                      ? "bg-red-50 border-red-300 text-red-600"
-                      : "bg-white border-gray-200 hover:border-gray-400 text-black"
-                  }`}
-                >
-                  {favourite
-                    ? "♥ Saved to Favourites"
-                    : "♡ Add to Favourites"}
-                </button>
-
-                {/* SELL */}
 
                 <Link
-                  href="/sell"
-                  className="block w-full mt-3 text-center bg-gray-100 hover:bg-gray-200 text-black py-3.5 rounded-xl font-black transition"
+                  href={`/messages?listing=${encodeURIComponent(
+                    String(listing.id)
+                  )}`}
+                  className="block w-full mt-6 bg-black hover:bg-gray-800 text-white text-center py-4 rounded-xl font-black transition no-underline"
                 >
-                  + Sell something
+                  💬 Contact Seller
                 </Link>
-
-                {/* SAFETY */}
-
-                <div className="mt-6 bg-gray-50 rounded-xl p-4">
-
-                  <p className="font-black text-sm">
-                    🛡️ Stay safe
-                  </p>
-
-                  <p className="text-xs text-gray-500 mt-2 leading-5">
-                    Never send money before checking the item
-                    and seller. Meet in a safe place when possible.
-                  </p>
-
-                </div>
-
-              </div>
-
-              {/* SHARE */}
-
-              <div className="bg-white border border-gray-200 rounded-2xl p-5 mt-5 shadow-sm">
-
-                <p className="font-black">
-                  Share this listing
-                </p>
 
                 <button
                   type="button"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(
-                        window.location.href
-                      );
-
-                      alert(
-                        "Listing link copied."
-                      );
-                    } catch {
-                      alert(
-                        "Could not copy the listing link."
-                      );
-                    }
-                  }}
-                  className="w-full mt-3 border-2 border-gray-200 hover:border-gray-400 py-3 rounded-xl font-bold transition"
+                  className="w-full mt-3 border-2 border-gray-200 hover:border-black bg-white py-4 rounded-xl font-black transition"
                 >
-                  🔗 Copy Listing Link
+                  ♡ Add to Favourites
                 </button>
 
               </div>
 
-            </aside>
+              {/* SAFETY */}
 
-          </div>
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
 
-        </div>
+                <h3 className="font-black">
+                  Stay safe
+                </h3>
 
-      </section>
+                <div className="mt-4 space-y-3 text-sm text-gray-600">
 
-      {/* MOBILE CONTACT BAR */}
+                  <p>✓ Meet in a safe public place</p>
 
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-3 shadow-[0_-4px_20px_rgba(0,0,0,0.12)]">
+                  <p>✓ Check the item before paying</p>
 
-        <div className="flex gap-2 max-w-7xl mx-auto">
+                  <p>
+                    ✓ Never send money before checking the item
+                  </p>
 
-          <button
-            type="button"
-            onClick={toggleFavourite}
-            className={`w-14 h-12 rounded-xl border-2 flex items-center justify-center text-xl ${
-              favourite
-                ? "border-red-300 bg-red-50 text-red-600"
-                : "border-gray-200 bg-white text-black"
-            }`}
-            aria-label="Favourite"
-          >
-            {favourite ? "♥" : "♡"}
-          </button>
+                </div>
+              </div>
 
-          <button
-            type="button"
-            onClick={contactSeller}
-            className="flex-1 h-12 rounded-xl bg-black hover:bg-gray-800 text-white font-black"
-          >
-            💬 Contact Seller
-          </button>
+              {/* SELL */}
+
+              <Link
+                href="/sell"
+                className="block text-center bg-white border-2 border-gray-200 hover:border-black rounded-xl py-4 font-black transition no-underline text-black"
+              >
+                + Sell something
+              </Link>
+
+            </div>
+          </aside>
 
         </div>
-
       </div>
 
       {/* FOOTER */}
 
-      <footer className="bg-[#080808] text-white mt-10 pb-20 lg:pb-0">
+      <footer className="bg-black text-gray-400 mt-12 border-t border-gray-800">
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
@@ -757,56 +627,56 @@ function ListingContent() {
 
             <div className="text-center sm:text-left">
 
-              <p className="font-black text-xl">
+              <p className="text-white text-xl font-black">
                 Sellio
               </p>
 
-              <p className="text-gray-500 text-xs mt-1">
+              <p className="text-xs mt-1 text-gray-500">
                 Buy. Sell. Discover.
               </p>
 
             </div>
 
-            <div className="flex flex-wrap justify-center gap-5 text-sm text-gray-500">
+            <div className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm">
 
               <Link
                 href="/"
-                className="hover:text-white transition"
+                className="text-gray-400 hover:text-white transition no-underline"
               >
                 Home
               </Link>
 
               <Link
                 href="/sell"
-                className="hover:text-white transition"
+                className="text-gray-400 hover:text-white transition no-underline"
               >
                 Sell
               </Link>
 
               <Link
                 href="/my-listings"
-                className="hover:text-white transition"
+                className="text-gray-400 hover:text-white transition no-underline"
               >
                 My Listings
               </Link>
 
               <Link
                 href="/favourites"
-                className="hover:text-white transition"
+                className="text-gray-400 hover:text-white transition no-underline"
               >
                 Favourites
               </Link>
 
               <Link
                 href="/messages"
-                className="hover:text-white transition"
+                className="text-gray-400 hover:text-white transition no-underline"
               >
                 Messages
               </Link>
 
               <Link
                 href="/profile"
-                className="hover:text-white transition"
+                className="text-gray-400 hover:text-white transition no-underline"
               >
                 Profile
               </Link>
@@ -816,7 +686,6 @@ function ListingContent() {
           </div>
 
         </div>
-
       </footer>
 
     </main>
@@ -824,25 +693,5 @@ function ListingContent() {
 }
 
 export default function ListingPage() {
-  return (
-    <Suspense
-      fallback={
-        <main className="min-h-screen bg-[#f4f4f4] text-black flex items-center justify-center">
-
-          <div className="text-center">
-
-            <div className="w-11 h-11 border-4 border-gray-300 border-t-black rounded-full animate-spin mx-auto" />
-
-            <p className="mt-5 text-gray-500">
-              Loading...
-            </p>
-
-          </div>
-
-        </main>
-      }
-    >
-      <ListingContent />
-    </Suspense>
-  );
+  return <ListingPageContent />;
 }
