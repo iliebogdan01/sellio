@@ -1,0 +1,20 @@
+SELLIO - CONTINUARE
+
+Status:
+- Home: OK
+- Register: OK
+- Login: OK
+- Profile: OK
+- Listing: OK
+- My Listings: OK
+- Favourites: facut
+- Messages: facut
+
+URMATORUL PAS:
+Verificam app/sell/page.tsx ?i facem ca fiecare anun? sa fie asociat utilizatorului autentificat.
+
+Comanda pentru mâine:
+Get-Content .\app\sell\page.tsx
+
+IMPORTANT:
+Nu modifica fi?ierele care func?ioneaza pâna nu verificam codul.
