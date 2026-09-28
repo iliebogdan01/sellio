@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -19,26 +19,16 @@ type Listing = {
   created_at: string;
 };
 
-export default function SearchPage() {
+function SearchPageContent() {
   const searchParams = useSearchParams();
 
-  const query =
-    searchParams.get("q") || "";
+  const query = searchParams.get("q") || "";
+  const category = searchParams.get("category") || "";
 
-  const category =
-    searchParams.get("category") || "";
-
-  const [listings, setListings] =
-    useState<Listing[]>([]);
-
-  const [searchInput, setSearchInput] =
-    useState(query);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
-    useState("");
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [searchInput, setSearchInput] = useState(query);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     setSearchInput(query);
@@ -53,8 +43,7 @@ export default function SearchPage() {
       setLoading(true);
       setError("");
 
-      const supabase =
-        createClient();
+      const supabase = createClient();
 
       let request = supabase
         .from("listings")
@@ -75,31 +64,12 @@ export default function SearchPage() {
           ascending: false,
         });
 
-      /*
-       * CATEGORY SEARCH
-       */
-
       if (category.trim()) {
-        request = request.eq(
-          "category",
-          category
-        );
+        request = request.eq("category", category);
       }
 
-      /*
-       * TEXT SEARCH
-       *
-       * Searches title,
-       * description,
-       * category
-       * and location.
-       */
-
       if (query.trim()) {
-        const search =
-          query
-            .trim()
-            .replace(/,/g, " ");
+        const search = query.trim().replace(/,/g, " ");
 
         request = request.or(
           `title.ilike.%${search}%,description.ilike.%${search}%,category.ilike.%${search}%,location.ilike.%${search}%`
@@ -112,23 +82,14 @@ export default function SearchPage() {
       } = await request;
 
       if (listingsError) {
-        console.error(
-          "Search error:",
-          listingsError
-        );
+        console.error("Search error:", listingsError);
 
-        setError(
-          listingsError.message
-        );
-
+        setError(listingsError.message);
         setListings([]);
-
         return;
       }
 
-      setListings(
-        (data || []) as Listing[]
-      );
+      setListings((data || []) as Listing[]);
     } catch (err) {
       console.error(err);
 
@@ -144,9 +105,7 @@ export default function SearchPage() {
     }
   }
 
-  function isPromoted(
-    listing: Listing
-  ) {
+  function isPromoted(listing: Listing) {
     if (
       !listing.promoted ||
       !listing.promoted_until
@@ -157,18 +116,13 @@ export default function SearchPage() {
     return (
       new Date(
         listing.promoted_until
-      ).getTime() >
-      Date.now()
+      ).getTime() > Date.now()
     );
   }
 
-  function getImage(
-    listing: Listing
-  ) {
+  function getImage(listing: Listing) {
     if (
-      Array.isArray(
-        listing.images
-      ) &&
+      Array.isArray(listing.images) &&
       listing.images.length > 0
     ) {
       return listing.images[0];
@@ -178,63 +132,40 @@ export default function SearchPage() {
   }
 
   function performSearch() {
-    const value =
-      searchInput.trim();
+    const value = searchInput.trim();
 
     if (!value) {
-      window.location.href =
-        "/";
+      window.location.href = "/";
       return;
     }
 
     window.location.href =
-      `/search?q=${encodeURIComponent(
-        value
-      )}`;
+      `/search?q=${encodeURIComponent(value)}`;
   }
 
   function clearSearch() {
-    window.location.href =
-      "/";
+    window.location.href = "/";
   }
 
-  /*
-   * Promoted listings first.
-   */
+  const sortedListings = [...listings].sort(
+    (a, b) => {
+      const aPromoted = isPromoted(a);
+      const bPromoted = isPromoted(b);
 
-  const sortedListings =
-    [...listings].sort(
-      (a, b) => {
-        const aPromoted =
-          isPromoted(a);
-
-        const bPromoted =
-          isPromoted(b);
-
-        if (
-          aPromoted &&
-          !bPromoted
-        ) {
-          return -1;
-        }
-
-        if (
-          !aPromoted &&
-          bPromoted
-        ) {
-          return 1;
-        }
-
-        return (
-          new Date(
-            b.created_at
-          ).getTime() -
-          new Date(
-            a.created_at
-          ).getTime()
-        );
+      if (aPromoted && !bPromoted) {
+        return -1;
       }
-    );
+
+      if (!aPromoted && bPromoted) {
+        return 1;
+      }
+
+      return (
+        new Date(b.created_at).getTime() -
+        new Date(a.created_at).getTime()
+      );
+    }
+  );
 
   return (
     <main className="min-h-screen bg-gray-100 text-gray-900 flex flex-col">
@@ -242,9 +173,7 @@ export default function SearchPage() {
       {/* HEADER */}
 
       <header className="bg-white border-b border-gray-300 sticky top-0 z-50">
-
         <div className="w-full px-3 sm:px-5 lg:px-7 py-3">
-
           <div className="flex items-center gap-3">
 
             {/* LOGO */}
@@ -259,9 +188,7 @@ export default function SearchPage() {
             {/* SEARCH BAR */}
 
             <div className="flex-1 flex justify-center">
-
               <div className="w-full max-w-2xl bg-white border border-gray-300 rounded-xl p-1 shadow-sm">
-
                 <div className="flex items-center gap-1.5">
 
                   <span className="pl-2 text-gray-500 text-lg">
@@ -270,24 +197,12 @@ export default function SearchPage() {
 
                   <input
                     type="text"
-                    value={
-                      searchInput
+                    value={searchInput}
+                    onChange={(event) =>
+                      setSearchInput(event.target.value)
                     }
-                    onChange={(
-                      event
-                    ) =>
-                      setSearchInput(
-                        event.target
-                          .value
-                      )
-                    }
-                    onKeyDown={(
-                      event
-                    ) => {
-                      if (
-                        event.key ===
-                        "Enter"
-                      ) {
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
                         performSearch();
                       }
                     }}
@@ -297,18 +212,14 @@ export default function SearchPage() {
 
                   <button
                     type="button"
-                    onClick={
-                      performSearch
-                    }
+                    onClick={performSearch}
                     className="shrink-0 bg-gray-950 hover:bg-black text-white px-5 py-2 rounded-lg font-bold text-sm transition"
                   >
                     Search
                   </button>
 
                 </div>
-
               </div>
-
             </div>
 
             {/* ICONS */}
@@ -359,11 +270,8 @@ export default function SearchPage() {
               </Link>
 
             </div>
-
           </div>
-
         </div>
-
       </header>
 
       {/* MAIN */}
@@ -375,7 +283,6 @@ export default function SearchPage() {
         <div className="flex items-end justify-between gap-4 mb-5">
 
           <div>
-
             <p className="text-xs uppercase tracking-[0.2em] font-bold text-gray-500">
               Marketplace
             </p>
@@ -385,19 +292,14 @@ export default function SearchPage() {
                 ? category
                 : "Search Results"}
             </h1>
-
           </div>
 
           {!loading && (
             <p className="text-sm text-gray-500">
-
               {sortedListings.length}{" "}
-
-              {sortedListings.length ===
-              1
+              {sortedListings.length === 1
                 ? "listing"
                 : "listings"}
-
             </p>
           )}
 
@@ -406,7 +308,6 @@ export default function SearchPage() {
         {/* SEARCH INFO */}
 
         {(query || category) && (
-
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-gray-300 rounded-xl px-4 py-3 mb-6">
 
             <p className="text-sm text-gray-600">
@@ -435,22 +336,18 @@ export default function SearchPage() {
 
             <button
               type="button"
-              onClick={
-                clearSearch
-              }
+              onClick={clearSearch}
               className="text-sm font-bold hover:text-red-600"
             >
               Clear Search
             </button>
 
           </div>
-
         )}
 
         {/* ERROR */}
 
         {error && (
-
           <div className="mb-6 bg-white border border-red-300 text-red-700 rounded-xl px-4 py-4">
 
             <p className="font-bold">
@@ -462,7 +359,6 @@ export default function SearchPage() {
             </p>
 
           </div>
-
         )}
 
         {/* LOADING */}
@@ -479,8 +375,7 @@ export default function SearchPage() {
 
           </div>
 
-        ) : sortedListings.length ===
-          0 ? (
+        ) : sortedListings.length === 0 ? (
 
           /* NO RESULTS */
 
@@ -502,9 +397,7 @@ export default function SearchPage() {
 
             <button
               type="button"
-              onClick={
-                clearSearch
-              }
+              onClick={clearSearch}
               className="mt-5 bg-gray-950 hover:bg-black text-white px-6 py-3 rounded-xl font-bold"
             >
               Back to Home
@@ -522,21 +415,15 @@ export default function SearchPage() {
               (listing) => {
 
                 const promoted =
-                  isPromoted(
-                    listing
-                  );
+                  isPromoted(listing);
 
                 const image =
-                  getImage(
-                    listing
-                  );
+                  getImage(listing);
 
                 return (
 
                   <article
-                    key={
-                      listing.id
-                    }
+                    key={listing.id}
                     className={`bg-white border rounded-2xl overflow-hidden hover:shadow-lg transition ${
                       promoted
                         ? "border-orange-300 hover:border-orange-500"
@@ -548,9 +435,7 @@ export default function SearchPage() {
 
                     <Link
                       href={`/listing?id=${encodeURIComponent(
-                        String(
-                          listing.id
-                        )
+                        String(listing.id)
                       )}`}
                       className="block relative"
                     >
@@ -558,9 +443,7 @@ export default function SearchPage() {
                       {image ? (
 
                         <img
-                          src={
-                            image
-                          }
+                          src={image}
                           alt={
                             listing.title ||
                             "Listing"
@@ -591,48 +474,32 @@ export default function SearchPage() {
                     <div className="p-3 sm:p-4">
 
                       {listing.category && (
-
                         <p className="text-[10px] sm:text-xs uppercase tracking-wide text-gray-400 font-bold truncate">
-                          {
-                            listing.category
-                          }
+                          {listing.category}
                         </p>
-
                       )}
 
                       <h2 className="font-black text-sm sm:text-base mt-1 line-clamp-2 min-h-[40px]">
-                        {
-                          listing.title ||
-                          "Untitled listing"
-                        }
+                        {listing.title ||
+                          "Untitled listing"}
                       </h2>
 
                       <p className="text-lg sm:text-xl font-black mt-2">
                         £
                         {Number(
-                          listing.price ||
-                            0
-                        ).toLocaleString(
-                          "en-GB"
-                        )}
+                          listing.price || 0
+                        ).toLocaleString("en-GB")}
                       </p>
 
                       {listing.location && (
-
                         <p className="text-xs text-gray-500 mt-1.5 truncate">
-                          📍{" "}
-                          {
-                            listing.location
-                          }
+                          📍 {listing.location}
                         </p>
-
                       )}
 
                       <Link
                         href={`/listing?id=${encodeURIComponent(
-                          String(
-                            listing.id
-                          )
+                          String(listing.id)
                         )}`}
                         className="block mt-3 bg-gray-950 hover:bg-black text-white text-center py-2.5 rounded-xl text-xs sm:text-sm font-bold transition"
                       >
@@ -748,5 +615,17 @@ export default function SearchPage() {
       </footer>
 
     </main>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-100" />
+      }
+    >
+      <SearchPageContent />
+    </Suspense>
   );
 }
