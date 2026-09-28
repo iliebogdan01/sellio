@@ -1,158 +1,99 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createClient } from "@supabase/supabase-js";
 
-const stripe = new Stripe(
-  process.env.STRIPE_SECRET_KEY!
-);
+export const runtime = "nodejs";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-export async function POST(
-  request: NextRequest
-) {
-  const body = await request.text();
-
-  const signature =
-    request.headers.get(
-      "stripe-signature"
-    );
-
-  if (!signature) {
-    return NextResponse.json(
-      {
-        error:
-          "Missing Stripe signature",
-      },
-      { status: 400 }
-    );
-  }
-
-  let event: Stripe.Event;
-
+export async function POST(request: NextRequest) {
   try {
-    event =
-      stripe.webhooks.constructEvent(
-        body,
-        signature,
-        process.env.STRIPE_WEBHOOK_SECRET!
+    const secretKey = process.env.STRIPE_SECRET_KEY;
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!secretKey) {
+      console.error("STRIPE_SECRET_KEY is missing");
+
+      return NextResponse.json(
+        { error: "STRIPE_SECRET_KEY is missing" },
+        { status: 500 }
       );
-  } catch (error) {
-    console.error(
-      "Stripe webhook signature error:",
-      error
-    );
-
-    return NextResponse.json(
-      {
-        error:
-          "Invalid Stripe webhook signature",
-      },
-      { status: 400 }
-    );
-  }
-
-  try {
-    switch (event.type) {
-      case "checkout.session.completed": {
-        const session =
-          event.data.object as Stripe.Checkout.Session;
-
-        const listingId =
-          session.metadata?.listing_id;
-
-        const promotionDays =
-          Number(
-            session.metadata
-              ?.promotion_days || "7"
-          );
-
-        if (!listingId) {
-          console.error(
-            "Missing listing_id in Stripe metadata."
-          );
-
-          break;
-        }
-
-        const promotedUntil =
-          new Date(
-            Date.now() +
-              promotionDays *
-                24 *
-                60 *
-                60 *
-                1000
-          ).toISOString();
-
-        const {
-          error,
-        } = await supabase
-          .from("listings")
-          .update({
-            promoted: true,
-            promoted_until:
-              promotedUntil,
-          })
-          .eq(
-            "id",
-            listingId
-          );
-
-        if (error) {
-          console.error(
-            "Could not promote listing:",
-            error
-          );
-
-          return NextResponse.json(
-            {
-              error:
-                "Could not update listing",
-            },
-            { status: 500 }
-          );
-        }
-
-        console.log(
-          `Listing ${listingId} promoted until ${promotedUntil}`
-        );
-
-        break;
-      }
-
-      case "checkout.session.expired": {
-        console.log(
-          "Stripe checkout session expired."
-        );
-
-        break;
-      }
-
-      default: {
-        console.log(
-          `Unhandled Stripe event: ${event.type}`
-        );
-      }
     }
 
-    return NextResponse.json({
-      received: true,
-    });
+    if (!webhookSecret) {
+      console.error("STRIPE_WEBHOOK_SECRET is missing");
+
+      return NextResponse.json(
+        { error: "STRIPE_WEBHOOK_SECRET is missing" },
+        { status: 500 }
+      );
+    }
+
+    const stripe = new Stripe(secretKey);
+
+    const body = await request.text();
+    const signature = request.headers.get("stripe-signature");
+
+    if (!signature) {
+      return NextResponse.json(
+        { error: "Missing stripe-signature" },
+        { status: 400 }
+      );
+    }
+
+    let event: Stripe.Event;
+
+    try {
+      event = stripe.webhooks.constructEvent(
+        body,
+        signature,
+        webhookSecret
+      );
+    } catch (error) {
+      console.error("Invalid Stripe signature:", error);
+
+      return NextResponse.json(
+        { error: "Invalid Stripe signature" },
+        { status: 400 }
+      );
+    }
+
+    console.log("Stripe event:", event.type);
+
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object as Stripe.Checkout.Session;
+
+        console.log("Checkout completed:", session.id);
+
+        break;
+      }
+
+      case "payment_intent.succeeded": {
+        const paymentIntent =
+          event.data.object as Stripe.PaymentIntent;
+
+        console.log("Payment succeeded:", paymentIntent.id);
+
+        break;
+      }
+
+      case "payment_intent.payment_failed": {
+        const paymentIntent =
+          event.data.object as Stripe.PaymentIntent;
+
+        console.log("Payment failed:", paymentIntent.id);
+
+        break;
+      }
+
+      default:
+        console.log("Unhandled event:", event.type);
+    }
+
+    return NextResponse.json({ received: true });
   } catch (error) {
-    console.error(
-      "Stripe webhook error:",
-      error
-    );
+    console.error("Stripe webhook error:", error);
 
     return NextResponse.json(
-      {
-        error:
-          "Webhook processing failed",
-      },
+      { error: "Webhook processing failed" },
       { status: 500 }
     );
   }
