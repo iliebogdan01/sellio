@@ -59,6 +59,7 @@ function MessagesContent() {
 
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -288,6 +289,84 @@ function MessagesContent() {
       return sameListing && samePeople;
     });
   }, [messages, selectedConversation, userId]);
+
+  /*
+   * DELETE CONVERSATION
+   */
+  async function deleteConversation() {
+    if (!userId || !selectedConversation || deleting) {
+      return;
+    }
+
+    const otherName =
+      selectedConversation.otherProfile?.full_name ||
+      "this user";
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete your conversation with ${otherName}?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleting(true);
+    setError("");
+
+    try {
+      const conversationMessages = messages.filter((message) => {
+        const sameListing =
+          message.listing_id === selectedConversation.listingId;
+
+        const samePeople =
+          (message.sender_id === userId &&
+            message.receiver_id ===
+              selectedConversation.otherUserId) ||
+          (message.receiver_id === userId &&
+            message.sender_id ===
+              selectedConversation.otherUserId);
+
+        return sameListing && samePeople;
+      });
+
+      const messageIds = conversationMessages.map(
+        (message) => message.id
+      );
+
+      if (messageIds.length === 0) {
+        setSelectedKey(null);
+        return;
+      }
+
+      const { error: deleteError } = await supabase
+        .from("messages")
+        .delete()
+        .in("id", messageIds);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      setMessages((current) =>
+        current.filter(
+          (message) => !messageIds.includes(message.id)
+        )
+      );
+
+      setSelectedKey(null);
+      setText("");
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not delete conversation."
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -536,7 +615,7 @@ function MessagesContent() {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)] lg:h-[calc(100vh-250px)] lg:min-h-[600px]">
+          <div className="grid grid-cols-1 gap-4 lg:h-[calc(100vh-250px)] lg:min-h-[600px] lg:grid-cols-[320px_minmax(0,1fr)]">
             <aside className="flex h-[260px] flex-col overflow-hidden rounded-2xl border border-[#303030] bg-[#181818] lg:h-auto lg:min-h-0">
               <div className="shrink-0 border-b border-[#303030] px-5 py-4">
                 <div className="flex items-center justify-between">
@@ -618,7 +697,7 @@ function MessagesContent() {
               </div>
             </aside>
 
-            <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[#303030] bg-[#181818] h-[calc(100dvh-390px)] lg:h-auto">
+            <section className="flex h-[calc(100dvh-390px)] min-h-0 flex-col overflow-hidden rounded-2xl border border-[#303030] bg-[#181818] lg:h-auto">
               {selectedConversation ? (
                 <>
                   <div className="shrink-0 border-b border-[#303030] px-4 py-4 sm:px-5">
@@ -667,6 +746,17 @@ function MessagesContent() {
                       >
                         View listing
                       </Link>
+
+                      {/* DELETE CONVERSATION */}
+                      <button
+                        type="button"
+                        onClick={deleteConversation}
+                        disabled={deleting}
+                        title="Delete conversation"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-red-900/60 bg-red-950/30 text-lg transition hover:bg-red-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {deleting ? "..." : "🗑️"}
+                      </button>
                     </div>
                   </div>
 
