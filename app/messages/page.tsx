@@ -32,6 +32,7 @@ type Listing = {
   title: string;
   price: number | string | null;
   image: string | null;
+  user_id: string;
 };
 
 type Conversation = {
@@ -40,7 +41,7 @@ type Conversation = {
   otherUserId: string;
   listing: Listing | null;
   otherProfile: Profile | null;
-  lastMessage: Message;
+  lastMessage: Message | null;
 };
 
 function MessagesContent() {
@@ -55,8 +56,10 @@ function MessagesContent() {
   const [listings, setListings] = useState<Record<number, Listing>>({});
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [text, setText] = useState("");
+  const [newConversation, setNewConversation] =
+    useState<Conversation | null>(null);
 
+  const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -64,6 +67,9 @@ function MessagesContent() {
 
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
+  /*
+   * LOAD USER
+   */
   useEffect(() => {
     let mounted = true;
 
@@ -72,9 +78,7 @@ function MessagesContent() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       if (!user) {
         setUserId(null);
@@ -92,10 +96,11 @@ function MessagesContent() {
     };
   }, [supabase]);
 
+  /*
+   * LOAD MESSAGES
+   */
   useEffect(() => {
-    if (!userId) {
-      return;
-    }
+    if (!userId) return;
 
     let mounted = true;
 
@@ -112,9 +117,7 @@ function MessagesContent() {
           ascending: true,
         });
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       if (messagesError) {
         console.error(messagesError);
@@ -164,7 +167,7 @@ function MessagesContent() {
       if (listingIds.length > 0) {
         const { data: listingData } = await supabase
           .from("listings")
-          .select("id, title, price, image")
+          .select("id, title, price, image, user_id")
           .in("id", listingIds);
 
         if (listingData) {
@@ -193,10 +196,11 @@ function MessagesContent() {
     };
   }, [supabase, userId]);
 
+  /*
+   * CREATE CONVERSATIONS FROM EXISTING MESSAGES
+   */
   const conversations = useMemo(() => {
-    if (!userId) {
-      return [];
-    }
+    if (!userId) return [];
 
     const map = new Map<string, Conversation>();
 
@@ -224,29 +228,126 @@ function MessagesContent() {
       }
     }
 
-    return Array.from(map.values()).sort(
-      (a, b) =>
-        new Date(b.lastMessage.created_at).getTime() -
-        new Date(a.lastMessage.created_at).getTime()
-    );
+    return Array.from(map.values()).sort((a, b) => {
+      const aTime = a.lastMessage
+        ? new Date(a.lastMessage.created_at).getTime()
+        : 0;
+
+      const bTime = b.lastMessage
+        ? new Date(b.lastMessage.created_at).getTime()
+        : 0;
+
+      return bTime - aTime;
+    });
   }, [messages, profiles, listings, userId]);
 
+  /*
+   * OPEN NEW CONVERSATION FROM LISTING
+   */
   useEffect(() => {
-    if (conversations.length === 0) {
-      setSelectedKey(null);
-      return;
-    }
+    if (!userId || !listingFromUrl) return;
 
-    if (listingFromUrl) {
-      const match = conversations.find(
-        (conversation) =>
-          String(conversation.listingId) === listingFromUrl
-      );
+    let mounted = true;
 
-      if (match) {
-        setSelectedKey(match.key);
+    async function openListingConversation() {
+      const listingId = Number(listingFromUrl);
+
+      if (!listingId) return;
+
+      const { data: listingData, error: listingError } = await supabase
+        .from("listings")
+        .select("id, title, price, image, user_id")
+        .eq("id", listingId)
+        .single();
+
+      if (!mounted) return;
+
+      if (listingError || !listingData) {
+        console.error(listingError);
+        setError("Could not load this listing.");
         return;
       }
+
+      const listing = listingData as Listing;
+
+      setListings((current) => ({
+        ...current,
+        [listing.id]: listing,
+      }));
+
+      /*
+       * DO NOT ALLOW USER TO MESSAGE THEMSELVES
+       */
+      if (listing.user_id === userId) {
+        const ownConversation = conversations.find(
+          (conversation) =>
+            conversation.listingId === listing.id
+        );
+
+        if (ownConversation) {
+          setSelectedKey(ownConversation.key);
+        }
+
+        setNewConversation(null);
+        return;
+      }
+
+      /*
+       * CHECK IF CONVERSATION ALREADY EXISTS
+       */
+      const existingConversation = conversations.find(
+        (conversation) =>
+          conversation.listingId === listing.id &&
+          conversation.otherUserId === listing.user_id
+      );
+
+      if (existingConversation) {
+        setSelectedKey(existingConversation.key);
+        setNewConversation(null);
+        return;
+      }
+
+      /*
+       * NEW EMPTY CONVERSATION
+       */
+      const newKey = `${listing.id}-${listing.user_id}`;
+
+      const { data: sellerProfile } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url")
+        .eq("id", listing.user_id)
+        .maybeSingle();
+
+      const conversation: Conversation = {
+        key: newKey,
+        listingId: listing.id,
+        otherUserId: listing.user_id,
+        listing,
+        otherProfile: (sellerProfile as Profile) ?? null,
+        lastMessage: null,
+      };
+
+      setNewConversation(conversation);
+      setSelectedKey(newKey);
+    }
+
+    openListingConversation();
+
+    return () => {
+      mounted = false;
+    };
+  }, [listingFromUrl, userId, conversations, supabase]);
+
+  /*
+   * SELECT NORMAL CONVERSATION
+   */
+  useEffect(() => {
+    if (!userId || listingFromUrl) return;
+
+    if (conversations.length === 0) {
+      setSelectedKey(null);
+      setNewConversation(null);
+      return;
     }
 
     setSelectedKey((current) => {
@@ -261,16 +362,26 @@ function MessagesContent() {
 
       return conversations[0].key;
     });
-  }, [conversations, listingFromUrl]);
+  }, [conversations, listingFromUrl, userId]);
 
+  /*
+   * SELECTED CONVERSATION
+   */
   const selectedConversation = useMemo(() => {
+    if (newConversation && newConversation.key === selectedKey) {
+      return newConversation;
+    }
+
     return (
       conversations.find(
         (conversation) => conversation.key === selectedKey
       ) ?? null
     );
-  }, [conversations, selectedKey]);
+  }, [conversations, newConversation, selectedKey]);
 
+  /*
+   * SELECTED MESSAGES
+   */
   const selectedMessages = useMemo(() => {
     if (!selectedConversation || !userId) {
       return [];
@@ -306,9 +417,7 @@ function MessagesContent() {
       `Are you sure you want to delete your conversation with ${otherName}?`
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setDeleting(true);
     setError("");
@@ -334,6 +443,7 @@ function MessagesContent() {
       );
 
       if (messageIds.length === 0) {
+        setNewConversation(null);
         setSelectedKey(null);
         return;
       }
@@ -353,6 +463,7 @@ function MessagesContent() {
         )
       );
 
+      setNewConversation(null);
       setSelectedKey(null);
       setText("");
     } catch (err) {
@@ -368,12 +479,13 @@ function MessagesContent() {
     }
   }
 
+  /*
+   * SCROLL TO BOTTOM
+   */
   useEffect(() => {
     const container = messagesContainerRef.current;
 
-    if (!container) {
-      return;
-    }
+    if (!container) return;
 
     const timer = window.setTimeout(() => {
       container.scrollTo({
@@ -387,6 +499,9 @@ function MessagesContent() {
     };
   }, [selectedMessages.length, selectedKey]);
 
+  /*
+   * MARK AS READ
+   */
   useEffect(() => {
     if (!userId || selectedMessages.length === 0) {
       return;
@@ -395,13 +510,12 @@ function MessagesContent() {
     const unreadIds = selectedMessages
       .filter(
         (message) =>
-          message.receiver_id === userId && !message.is_read
+          message.receiver_id === userId &&
+          !message.is_read
       )
       .map((message) => message.id);
 
-    if (unreadIds.length === 0) {
-      return;
-    }
+    if (unreadIds.length === 0) return;
 
     async function markAsRead() {
       const { error: updateError } = await supabase
@@ -430,6 +544,9 @@ function MessagesContent() {
     markAsRead();
   }, [selectedMessages, supabase, userId]);
 
+  /*
+   * SEND MESSAGE
+   */
   async function sendMessage() {
     if (!userId || !selectedConversation) {
       return;
@@ -437,7 +554,13 @@ function MessagesContent() {
 
     const cleanText = text.trim();
 
-    if (!cleanText) {
+    if (!cleanText) return;
+
+    /*
+     * PREVENT MESSAGING YOURSELF
+     */
+    if (selectedConversation.otherUserId === userId) {
+      setError("You cannot send a message to yourself.");
       return;
     }
 
@@ -464,7 +587,21 @@ function MessagesContent() {
       }
 
       if (data) {
-        setMessages((current) => [...current, data as Message]);
+        const newMessage = data as Message;
+
+        setMessages((current) => [
+          ...current,
+          newMessage,
+        ]);
+
+        /*
+         * NEW CONVERSATION BECOMES NORMAL CONVERSATION
+         */
+        setNewConversation(null);
+
+        setSelectedKey(
+          `${newMessage.listing_id}-${newMessage.receiver_id}`
+        );
       }
 
       setText("");
@@ -495,11 +632,14 @@ function MessagesContent() {
     });
   }
 
+  /*
+   * NOT LOGGED IN
+   */
   if (!userId && !loading) {
     return (
       <main className="min-h-screen bg-[#111111] text-white">
         <header className="border-b border-[#303030] bg-[#181818]">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
+          <div className="flex w-full items-center justify-between px-4 py-4">
             <Link
               href="/"
               className="text-2xl font-black tracking-tight"
@@ -516,8 +656,8 @@ function MessagesContent() {
           </div>
         </header>
 
-        <section className="mx-auto flex min-h-[70vh] max-w-3xl items-center justify-center px-4">
-          <div className="w-full rounded-2xl border border-[#303030] bg-[#181818] p-8 text-center">
+        <section className="flex min-h-[70vh] items-center justify-center px-4">
+          <div className="w-full max-w-3xl rounded-2xl border border-[#303030] bg-[#181818] p-8 text-center">
             <div className="mb-4 text-5xl">💬</div>
 
             <h1 className="text-2xl font-black">
@@ -540,10 +680,13 @@ function MessagesContent() {
     );
   }
 
+  /*
+   * MAIN PAGE
+   */
   return (
     <main className="min-h-screen bg-[#111111] text-white">
       <header className="sticky top-0 z-30 border-b border-[#303030] bg-[#181818]">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4">
+        <div className="flex w-full items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <Link
             href="/"
             className="text-2xl font-black tracking-tight transition hover:opacity-80"
@@ -569,7 +712,7 @@ function MessagesContent() {
         </div>
       </header>
 
-      <section className="mx-auto max-w-7xl px-4 py-5 sm:py-8">
+      <section className="w-full px-4 py-5 sm:px-6 sm:py-8">
         <div className="mb-5">
           <p className="text-sm font-bold uppercase tracking-wider text-[#777777]">
             Sellio
@@ -594,7 +737,8 @@ function MessagesContent() {
           <div className="rounded-2xl border border-[#303030] bg-[#181818] p-8 text-center text-[#999999]">
             Loading messages...
           </div>
-        ) : conversations.length === 0 ? (
+        ) : conversations.length === 0 &&
+          !newConversation ? (
           <div className="rounded-2xl border border-[#303030] bg-[#181818] p-10 text-center">
             <div className="text-5xl">💬</div>
 
@@ -616,6 +760,7 @@ function MessagesContent() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 lg:h-[calc(100vh-250px)] lg:min-h-[600px] lg:grid-cols-[320px_minmax(0,1fr)]">
+            {/* CONVERSATIONS */}
             <aside className="flex h-[260px] flex-col overflow-hidden rounded-2xl border border-[#303030] bg-[#181818] lg:h-auto lg:min-h-0">
               <div className="shrink-0 border-b border-[#303030] px-5 py-4">
                 <div className="flex items-center justify-between">
@@ -642,9 +787,10 @@ function MessagesContent() {
                     <button
                       key={conversation.key}
                       type="button"
-                      onClick={() =>
-                        setSelectedKey(conversation.key)
-                      }
+                      onClick={() => {
+                        setNewConversation(null);
+                        setSelectedKey(conversation.key);
+                      }}
                       className={`w-full border-b border-[#292929] px-4 py-4 text-left transition ${
                         active
                           ? "bg-[#252525]"
@@ -674,11 +820,14 @@ function MessagesContent() {
                               {otherName}
                             </p>
 
-                            <span className="shrink-0 text-[10px] text-[#777777]">
-                              {formatConversationDate(
-                                conversation.lastMessage.created_at
-                              )}
-                            </span>
+                            {conversation.lastMessage && (
+                              <span className="shrink-0 text-[10px] text-[#777777]">
+                                {formatConversationDate(
+                                  conversation.lastMessage
+                                    .created_at
+                                )}
+                              </span>
+                            )}
                           </div>
 
                           <p className="mt-1 truncate text-xs text-[#777777]">
@@ -686,23 +835,61 @@ function MessagesContent() {
                               `Listing #${conversation.listingId}`}
                           </p>
 
-                          <p className="mt-1 truncate text-xs text-[#999999]">
-                            {conversation.lastMessage.text}
-                          </p>
+                          {conversation.lastMessage && (
+                            <p className="mt-1 truncate text-xs text-[#999999]">
+                              {conversation.lastMessage.text}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </button>
                   );
                 })}
+
+                {newConversation && (
+                  <button
+                    type="button"
+                    className="w-full border-b border-[#292929] bg-[#252525] px-4 py-4 text-left"
+                  >
+                    <div className="flex gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#303030] text-lg font-black">
+                        {(
+                          newConversation.otherProfile?.full_name ||
+                          "S"
+                        )
+                          .charAt(0)
+                          .toUpperCase()}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold">
+                          {newConversation.otherProfile
+                            ?.full_name || "Sellio User"}
+                        </p>
+
+                        <p className="mt-1 truncate text-xs text-[#777777]">
+                          {newConversation.listing?.title}
+                        </p>
+
+                        <p className="mt-1 text-xs text-[#999999]">
+                          New conversation
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                )}
               </div>
             </aside>
 
+            {/* CHAT */}
             <section className="flex h-[calc(100dvh-390px)] min-h-0 flex-col overflow-hidden rounded-2xl border border-[#303030] bg-[#181818] lg:h-auto">
               {selectedConversation ? (
                 <>
+                  {/* CHAT HEADER */}
                   <div className="shrink-0 border-b border-[#303030] px-4 py-4 sm:px-5">
                     <div className="flex items-center gap-3">
-                      {selectedConversation.otherProfile?.avatar_url ? (
+                      {selectedConversation.otherProfile
+                        ?.avatar_url ? (
                         <img
                           src={
                             selectedConversation.otherProfile
@@ -747,7 +934,6 @@ function MessagesContent() {
                         View listing
                       </Link>
 
-                      {/* DELETE CONVERSATION */}
                       <button
                         type="button"
                         onClick={deleteConversation}
@@ -760,6 +946,7 @@ function MessagesContent() {
                     </div>
                   </div>
 
+                  {/* MESSAGES */}
                   <div
                     ref={messagesContainerRef}
                     className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 [scrollbar-width:thin] touch-pan-y sm:px-6"
@@ -811,9 +998,25 @@ function MessagesContent() {
                           </div>
                         );
                       })}
+
+                      {selectedMessages.length === 0 && (
+                        <div className="flex min-h-[300px] items-center justify-center text-center text-sm text-[#777777]">
+                          <div>
+                            <div className="mb-3 text-4xl">
+                              💬
+                            </div>
+
+                            <p>
+                              Start the conversation with this
+                              seller.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
+                  {/* INPUT */}
                   <div className="shrink-0 border-t border-[#303030] bg-[#181818] p-3 sm:p-4">
                     <form
                       onSubmit={(event) => {
