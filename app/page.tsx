@@ -156,7 +156,7 @@ export default function HomePage() {
     <main className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-white text-black">
       {/* HEADER */}
       <header className="sticky top-0 z-50 w-full border-b bg-white">
-        <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-2 px-3 sm:h-20 sm:gap-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-16 w-full max-w-[1600px] items-center gap-2 px-3 sm:h-20 sm:gap-4 sm:px-6 lg:px-10">
           {/* LOGO */}
           <Link
             href="/"
@@ -245,7 +245,7 @@ export default function HomePage() {
 
       {/* CATEGORIES */}
       <section className="w-full overflow-hidden border-b bg-white">
-        <div className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+        <div className="mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-10">
           <div className="flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-4 sm:gap-4 lg:grid-cols-8">
             <button
               type="button"
@@ -286,7 +286,7 @@ export default function HomePage() {
       </section>
 
       {/* MAIN CONTENT */}
-      <div className="mx-auto w-full max-w-7xl overflow-hidden px-3 py-6 sm:px-6 sm:py-10 lg:px-8">
+      <div className="mx-auto w-full max-w-[1600px] overflow-hidden px-3 py-6 sm:px-6 sm:py-10 lg:px-10">
         {/* TITLE */}
         <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -328,7 +328,7 @@ export default function HomePage() {
             </p>
           </div>
         ) : (
-          <div className="grid w-full grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid w-full grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {filteredListings.map((listing) => {
               const favourite = favourites.includes(listing.id);
               const promoted = isPromoted(listing);
@@ -441,7 +441,7 @@ export default function HomePage() {
 
       {/* FOOTER */}
       <footer className="border-t bg-gray-50">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-3 py-8 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-3 px-3 py-8 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-10">
           <div>
             © {new Date().getFullYear()} Sellio. All rights reserved.
           </div>
