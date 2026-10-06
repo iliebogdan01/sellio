@@ -3,12 +3,13 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import MessageBadge from "../../components/MessageBadge";
+import MessageBadge from "@/components/MessageBadge";
 
 type Message = {
   id: number;
@@ -24,66 +25,124 @@ type Listing = {
   id: number;
   title: string;
   image: string | null;
+  price: number | string;
 };
 
 type Conversation = {
   key: string;
-  listing_id: number;
-  other_user_id: string;
-  listing_title: string;
-  listing_image: string | null;
-  last_message: string;
-  last_message_at: string;
-  unread_count: number;
+  listingId: number;
+  otherUserId: string;
+  listing: Listing | null;
+  messages: Message[];
+  lastMessage: Message;
+  unreadCount: number;
 };
 
+const categoryLinks = [
+  { name: "Home", icon: "🏠", href: "/" },
+  { name: "Cars", icon: "🚗", href: "/" },
+  { name: "Electronics", icon: "📱", href: "/" },
+  { name: "Fashion", icon: "👕", href: "/" },
+  { name: "Property", icon: "🏠", href: "/" },
+  { name: "Gaming", icon: "🎮", href: "/" },
+];
+
 export default function MessagesPage() {
+  const supabase = createClient();
+
   const [userId, setUserId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [listings, setListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [text, setText] = useState("");
-  const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
+
+  // Containerul care are propriul scroll
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Element invizibil aflat la finalul conversației
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  async function loadMessages(currentUserId?: string) {
+    try {
+      const id = currentUserId || userId;
+
+      if (!id) return;
+
+      const { data, error: messagesError } = await supabase
+        .from("messages")
+        .select(
+          `
+            id,
+            listing_id,
+            sender_id,
+            receiver_id,
+            text,
+            created_at,
+            is_read
+          `
+        )
+        .or(`sender_id.eq.${id},receiver_id.eq.${id}`)
+        .order("created_at", {
+          ascending: true,
+        });
+
+      if (messagesError) {
+        console.error(messagesError);
+        setError(messagesError.message);
+        return;
+      }
+
+      setMessages((data || []) as Message[]);
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not load messages."
+      );
+    }
+  }
+
+  async function loadListings() {
+    try {
+      const { data, error: listingsError } = await supabase
+        .from("listings")
+        .select("id, title, image, price");
+
+      if (listingsError) {
+        console.error(listingsError);
+        return;
+      }
+
+      setListings((data || []) as Listing[]);
+    } catch (err) {
+      console.error(err);
+    }
+  }
 
   useEffect(() => {
-    loadMessages();
+    let mounted = true;
 
-    const supabase = createClient();
-
-    const channel = supabase
-      .channel("sellio-messages")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-        },
-        async () => {
-          await loadMessages();
-        }
-      )
-      .subscribe();
-
-    const interval = setInterval(() => {
-      loadMessages();
-    }, 5000);
-
-    return () => {
-      clearInterval(interval);
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  async function loadMessages() {
-    try {
-      const supabase = createClient();
+    async function init() {
+      setLoading(true);
+      setError("");
 
       const {
         data: { user },
+        error: userError,
       } = await supabase.auth.getUser();
+
+      if (!mounted) return;
+
+      if (userError) {
+        setError(userError.message);
+        setLoading(false);
+        return;
+      }
 
       if (!user) {
         setError("You must be logged in to view your messages.");
@@ -93,9 +152,269 @@ export default function MessagesPage() {
 
       setUserId(user.id);
 
-      const { data: messageData, error: messageError } =
+      await Promise.all([
+        loadMessages(user.id),
+        loadListings(),
+      ]);
+
+      if (mounted) {
+        setLoading(false);
+      }
+    }
+
+    init();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  /*
+   * Realtime + polling.
+   *
+   * Chiar dacă Realtime nu este activat în Supabase,
+   * polling-ul la 5 secunde continuă să funcționeze.
+   */
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`messages-page-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+        },
+        (payload) => {
+          const newMessage = payload.new as Message;
+
+          if (
+            newMessage.sender_id === userId ||
+            newMessage.receiver_id === userId
+          ) {
+            setMessages((current) => {
+              const exists = current.some(
+                (message) => message.id === newMessage.id
+              );
+
+              if (exists) {
+                return current;
+              }
+
+              return [...current, newMessage].sort(
+                (a, b) =>
+                  new Date(a.created_at).getTime() -
+                  new Date(b.created_at).getTime()
+              );
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    const interval = window.setInterval(() => {
+      loadMessages(userId);
+    }, 5000);
+
+    return () => {
+      window.clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
+  const conversations = useMemo<Conversation[]>(() => {
+    if (!userId) return [];
+
+    const grouped = new Map<string, Message[]>();
+
+    for (const message of messages) {
+      const otherUserId =
+        message.sender_id === userId
+          ? message.receiver_id
+          : message.sender_id;
+
+      const key = `${message.listing_id}-${otherUserId}`;
+
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+
+      grouped.get(key)!.push(message);
+    }
+
+    const result: Conversation[] = [];
+
+    for (const [key, conversationMessages] of grouped.entries()) {
+      const firstMessage = conversationMessages[0];
+
+      if (!firstMessage) continue;
+
+      const otherUserId =
+        firstMessage.sender_id === userId
+          ? firstMessage.receiver_id
+          : firstMessage.sender_id;
+
+      const lastMessage =
+        conversationMessages[conversationMessages.length - 1];
+
+      const unreadCount = conversationMessages.filter(
+        (message) =>
+          message.receiver_id === userId &&
+          !message.is_read
+      ).length;
+
+      const listing =
+        listings.find(
+          (item) => item.id === firstMessage.listing_id
+        ) || null;
+
+      result.push({
+        key,
+        listingId: firstMessage.listing_id,
+        otherUserId,
+        listing,
+        messages: conversationMessages,
+        lastMessage,
+        unreadCount,
+      });
+    }
+
+    result.sort(
+      (a, b) =>
+        new Date(b.lastMessage.created_at).getTime() -
+        new Date(a.lastMessage.created_at).getTime()
+    );
+
+    return result;
+  }, [messages, listings, userId]);
+
+  /*
+   * Selectăm automat prima conversație.
+   */
+  useEffect(() => {
+    if (!selectedKey && conversations.length > 0) {
+      setSelectedKey(conversations[0].key);
+    }
+
+    if (
+      selectedKey &&
+      conversations.length > 0 &&
+      !conversations.some(
+        (conversation) => conversation.key === selectedKey
+      )
+    ) {
+      setSelectedKey(conversations[0].key);
+    }
+  }, [conversations, selectedKey]);
+
+  const selectedConversation =
+    conversations.find(
+      (conversation) => conversation.key === selectedKey
+    ) || null;
+
+  /*
+   * AUTO-SCROLL
+   *
+   * Când schimbăm conversația sau apar mesaje noi,
+   * mergem automat la ultimul mesaj.
+   */
+  useEffect(() => {
+    if (!selectedConversation) return;
+
+    const timeout = window.setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+    }, 50);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [
+    selectedKey,
+    selectedConversation?.messages.length,
+  ]);
+
+  /*
+   * Marchează mesajele primite ca citite.
+   */
+  useEffect(() => {
+    if (!userId || !selectedConversation) return;
+
+    const unreadIds = selectedConversation.messages
+      .filter(
+        (message) =>
+          message.receiver_id === userId &&
+          !message.is_read
+      )
+      .map((message) => message.id);
+
+    if (unreadIds.length === 0) return;
+
+    async function markAsRead() {
+      const { error: updateError } = await supabase
+        .from("messages")
+        .update({
+          is_read: true,
+        })
+        .in("id", unreadIds)
+        .eq("receiver_id", userId);
+
+      if (updateError) {
+        console.error(
+          "Could not mark messages as read:",
+          updateError
+        );
+        return;
+      }
+
+      setMessages((current) =>
+        current.map((message) =>
+          unreadIds.includes(message.id)
+            ? {
+                ...message,
+                is_read: true,
+              }
+            : message
+        )
+      );
+    }
+
+    markAsRead();
+  }, [selectedKey, selectedConversation, userId]);
+
+  async function sendMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const cleanText = text.trim();
+
+    if (!cleanText || !userId || !selectedConversation) {
+      return;
+    }
+
+    setSending(true);
+    setError("");
+
+    try {
+      const receiverId =
+        selectedConversation.otherUserId;
+
+      const listingId =
+        selectedConversation.listingId;
+
+      const { data, error: insertError } =
         await supabase
           .from("messages")
+          .insert({
+            listing_id: listingId,
+            sender_id: userId,
+            receiver_id: receiverId,
+            text: cleanText,
+            is_read: false,
+          })
           .select(
             `
               id,
@@ -107,272 +426,29 @@ export default function MessagesPage() {
               is_read
             `
           )
-          .or(
-            `sender_id.eq.${user.id},receiver_id.eq.${user.id}`
-          )
-          .order("created_at", {
-            ascending: true,
-          });
+          .single();
 
-      if (messageError) {
-        console.error(messageError);
-        setError(messageError.message);
-        setLoading(false);
+      if (insertError) {
+        console.error(insertError);
+        setError(insertError.message);
         return;
       }
 
-      const loadedMessages = (messageData || []) as Message[];
+      if (data) {
+        setMessages((current) => {
+          const exists = current.some(
+            (message) => message.id === data.id
+          );
 
-      setMessages(loadedMessages);
+          if (exists) {
+            return current;
+          }
 
-      const listingIds = Array.from(
-        new Set(
-          loadedMessages.map(
-            (message) => message.listing_id
-          )
-        )
-      );
-
-      if (listingIds.length > 0) {
-        const { data: listingData, error: listingError } =
-          await supabase
-            .from("listings")
-            .select("id, title, image")
-            .in("id", listingIds);
-
-        if (!listingError) {
-          setListings((listingData || []) as Listing[]);
-        }
-      }
-
-      setLoading(false);
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Something went wrong."
-      );
-
-      setLoading(false);
-    }
-  }
-
-  function getConversationKey(
-    listingId: number,
-    otherUserId: string
-  ) {
-    return `${listingId}-${otherUserId}`;
-  }
-
-  const conversations = useMemo(() => {
-    if (!userId) return [];
-
-    const map = new Map<string, Conversation>();
-
-    for (const message of messages) {
-      const otherUserId =
-        message.sender_id === userId
-          ? message.receiver_id
-          : message.sender_id;
-
-      const key = getConversationKey(
-        message.listing_id,
-        otherUserId
-      );
-
-      const listing = listings.find(
-        (item) => item.id === message.listing_id
-      );
-
-      const existing = map.get(key);
-
-      if (!existing) {
-        map.set(key, {
-          key,
-          listing_id: message.listing_id,
-          other_user_id: otherUserId,
-          listing_title:
-            listing?.title || "Listing",
-          listing_image:
-            listing?.image || null,
-          last_message: message.text,
-          last_message_at: message.created_at,
-          unread_count:
-            message.receiver_id === userId &&
-            !message.is_read
-              ? 1
-              : 0,
+          return [...current, data as Message];
         });
-      } else {
-        if (
-          new Date(message.created_at).getTime() >
-          new Date(existing.last_message_at).getTime()
-        ) {
-          existing.last_message = message.text;
-          existing.last_message_at =
-            message.created_at;
-        }
-
-        if (
-          message.receiver_id === userId &&
-          !message.is_read
-        ) {
-          existing.unread_count += 1;
-        }
-      }
-    }
-
-    return Array.from(map.values()).sort(
-      (a, b) =>
-        new Date(b.last_message_at).getTime() -
-        new Date(a.last_message_at).getTime()
-    );
-  }, [messages, listings, userId]);
-
-  const selectedConversation = conversations.find(
-    (conversation) =>
-      conversation.key === selectedKey
-  );
-
-  const selectedMessages = useMemo(() => {
-    if (!selectedConversation || !userId) {
-      return [];
-    }
-
-    return messages.filter((message) => {
-      const otherUserId =
-        message.sender_id === userId
-          ? message.receiver_id
-          : message.sender_id;
-
-      return (
-        message.listing_id ===
-          selectedConversation.listing_id &&
-        otherUserId ===
-          selectedConversation.other_user_id
-      );
-    });
-  }, [
-    messages,
-    selectedConversation,
-    userId,
-  ]);
-
-  useEffect(() => {
-    if (
-      !selectedKey &&
-      conversations.length > 0
-    ) {
-      setSelectedKey(conversations[0].key);
-    }
-  }, [conversations, selectedKey]);
-
-  useEffect(() => {
-    if (
-      selectedConversation &&
-      userId
-    ) {
-      markConversationAsRead(
-        selectedConversation.listing_id,
-        selectedConversation.other_user_id
-      );
-    }
-  }, [
-    selectedKey,
-    selectedConversation,
-    userId,
-  ]);
-
-  async function markConversationAsRead(
-    listingId: number,
-    otherUserId: string
-  ) {
-    if (!userId) return;
-
-    const supabase = createClient();
-
-    const { error } = await supabase
-      .from("messages")
-      .update({
-        is_read: true,
-      })
-      .eq("listing_id", listingId)
-      .eq("receiver_id", userId)
-      .eq("sender_id", otherUserId)
-      .eq("is_read", false);
-
-    if (error) {
-      console.error(
-        "Could not mark messages as read:",
-        error
-      );
-      return;
-    }
-
-    setMessages((current) =>
-      current.map((message) => {
-        const belongsToConversation =
-          message.listing_id === listingId &&
-          message.sender_id === otherUserId &&
-          message.receiver_id === userId;
-
-        if (
-          belongsToConversation &&
-          !message.is_read
-        ) {
-          return {
-            ...message,
-            is_read: true,
-          };
-        }
-
-        return message;
-      })
-    );
-  }
-
-  async function sendMessage(
-    event: FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-
-    if (
-      !userId ||
-      !selectedConversation ||
-      !text.trim()
-    ) {
-      return;
-    }
-
-    try {
-      setSending(true);
-      setError("");
-
-      const supabase = createClient();
-
-      const { error: sendError } =
-        await supabase
-          .from("messages")
-          .insert({
-            listing_id:
-              selectedConversation.listing_id,
-            sender_id: userId,
-            receiver_id:
-              selectedConversation.other_user_id,
-            text: text.trim(),
-          });
-
-      if (sendError) {
-        console.error(sendError);
-        setError(sendError.message);
-        return;
       }
 
       setText("");
-
-      await loadMessages();
     } catch (err) {
       console.error(err);
 
@@ -386,14 +462,23 @@ export default function MessagesPage() {
     }
   }
 
-  function formatDate(date: string) {
-    return new Date(date).toLocaleString(
+  function formatMessageTime(date: string) {
+    return new Date(date).toLocaleTimeString(
+      "en-GB",
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+      }
+    );
+  }
+
+  function formatConversationDate(date: string) {
+    return new Date(date).toLocaleDateString(
       "en-GB",
       {
         day: "2-digit",
         month: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
+        year: "numeric",
       }
     );
   }
@@ -402,7 +487,6 @@ export default function MessagesPage() {
     <main className="min-h-screen bg-[#111111] text-white flex flex-col">
 
       {/* HEADER */}
-
       <header className="bg-[#080808] border-b border-[#292929] sticky top-0 z-50">
 
         <div className="w-full px-3 sm:px-5 lg:px-7 py-3">
@@ -469,54 +553,25 @@ export default function MessagesPage() {
       </header>
 
       {/* CATEGORY BAR */}
-
       <section className="bg-[#0d0d0d] border-b border-[#292929]">
 
         <div className="w-full px-3 sm:px-5 lg:px-7 py-3">
 
           <div className="flex gap-2 overflow-x-auto">
 
-            <Link
-              href="/"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-black text-sm font-black"
-            >
-              🏠 Home
-            </Link>
-
-            <Link
-              href="/"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-[#202020] hover:bg-[#292929] text-[#dddddd] text-sm font-semibold transition"
-            >
-              🚗 Cars
-            </Link>
-
-            <Link
-              href="/"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-[#202020] hover:bg-[#292929] text-[#dddddd] text-sm font-semibold transition"
-            >
-              📱 Electronics
-            </Link>
-
-            <Link
-              href="/"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-[#202020] hover:bg-[#292929] text-[#dddddd] text-sm font-semibold transition"
-            >
-              👕 Fashion
-            </Link>
-
-            <Link
-              href="/"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-[#202020] hover:bg-[#292929] text-[#dddddd] text-sm font-semibold transition"
-            >
-              🏠 Property
-            </Link>
-
-            <Link
-              href="/"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-[#202020] hover:bg-[#292929] text-[#dddddd] text-sm font-semibold transition"
-            >
-              🎮 Gaming
-            </Link>
+            {categoryLinks.map((category) => (
+              <Link
+                key={category.name}
+                href={category.href}
+                className={
+                  category.name === "Home"
+                    ? "whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-black text-sm font-black"
+                    : "whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-[#202020] hover:bg-[#292929] text-[#dddddd] text-sm font-semibold transition"
+                }
+              >
+                {category.icon} {category.name}
+              </Link>
+            ))}
 
           </div>
 
@@ -525,14 +580,12 @@ export default function MessagesPage() {
       </section>
 
       {/* MAIN */}
-
-      <section className="flex-1 w-full px-3 sm:px-5 lg:px-7 py-8">
+      <section className="flex-1 w-full px-3 sm:px-5 lg:px-7 py-6">
 
         <div className="w-full max-w-7xl mx-auto">
 
           {/* TITLE */}
-
-          <div className="mb-8">
+          <div className="mb-5">
 
             <p className="text-xs uppercase tracking-[0.25em] font-bold text-[#777777]">
               Sellio Account
@@ -543,15 +596,14 @@ export default function MessagesPage() {
             </h1>
 
             <p className="text-[#888888] mt-2">
-              Manage your conversations with Sellio buyers and sellers.
+              Chat with buyers and sellers about your listings.
             </p>
 
           </div>
 
           {/* ERROR */}
-
           {error && (
-            <div className="mb-6 bg-[#241414] border border-[#5a2929] text-[#ffb5b5] rounded-xl px-5 py-4">
+            <div className="mb-5 bg-[#241414] border border-[#5a2929] text-[#ffb5b5] rounded-xl px-5 py-4">
 
               <p className="font-black">
                 Something went wrong
@@ -565,7 +617,6 @@ export default function MessagesPage() {
           )}
 
           {/* LOADING */}
-
           {loading ? (
 
             <div className="bg-[#181818] border border-[#303030] rounded-2xl p-16 text-center">
@@ -573,311 +624,185 @@ export default function MessagesPage() {
               <div className="w-11 h-11 border-4 border-[#333333] border-t-white rounded-full animate-spin mx-auto" />
 
               <p className="mt-4 text-[#888888]">
-                Loading your messages...
+                Loading messages...
               </p>
-
-            </div>
-
-          ) : conversations.length === 0 ? (
-
-            <div className="bg-[#181818] border border-[#303030] rounded-2xl p-12 text-center">
-
-              <div className="text-7xl">
-                💬
-              </div>
-
-              <h2 className="text-2xl font-black mt-5">
-                No messages yet
-              </h2>
-
-              <p className="text-[#888888] mt-2 max-w-md mx-auto">
-                Your conversations with buyers and sellers will appear here.
-              </p>
-
-              <Link
-                href="/"
-                className="inline-flex mt-6 bg-white hover:bg-gray-200 text-black px-7 py-3 rounded-xl font-black transition"
-              >
-                Browse Listings
-              </Link>
 
             </div>
 
           ) : (
 
-            <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-5">
+            /*
+             * IMPORTANT:
+             * h-[calc(100vh-250px)] + overflow-hidden
+             * ține aplicația de chat în ecran.
+             */
+            <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-4 lg:h-[calc(100vh-250px)] lg:min-h-[600px]">
 
               {/* CONVERSATIONS */}
+              <aside className="bg-[#181818] border border-[#303030] rounded-2xl overflow-hidden flex flex-col min-h-[320px] lg:min-h-0">
 
-              <div className="bg-[#181818] border border-[#303030] rounded-2xl overflow-hidden">
+                <div className="px-5 py-4 border-b border-[#303030] shrink-0">
 
-                <div className="px-5 py-4 border-b border-[#303030]">
+                  <div className="flex items-center justify-between">
 
-                  <h2 className="font-black text-lg">
-                    Conversations
-                  </h2>
+                    <h2 className="font-black text-lg">
+                      Conversations
+                    </h2>
 
-                  <p className="text-xs text-[#777777] mt-1">
-                    {conversations.length} conversation
-                    {conversations.length === 1 ? "" : "s"}
-                  </p>
+                    <span className="text-xs text-[#777777]">
+                      {conversations.length}
+                    </span>
 
-                </div>
-
-                <div className="max-h-[650px] overflow-y-auto">
-
-                  {conversations.map(
-                    (conversation) => {
-
-                      const active =
-                        selectedKey ===
-                        conversation.key;
-
-                      return (
-                        <button
-                          key={conversation.key}
-                          type="button"
-                          onClick={() =>
-                            setSelectedKey(
-                              conversation.key
-                            )
-                          }
-                          className={`w-full text-left p-4 border-b border-[#292929] transition ${
-                            active
-                              ? "bg-[#292929]"
-                              : "hover:bg-[#202020]"
-                          }`}
-                        >
-
-                          <div className="flex gap-3">
-
-                            <div className="w-12 h-12 rounded-xl bg-[#222222] border border-[#333333] shrink-0 overflow-hidden flex items-center justify-center">
-
-                              {conversation.listing_image ? (
-                                <img
-                                  src={
-                                    conversation.listing_image
-                                  }
-                                  alt=""
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <span className="text-xl">
-                                  📦
-                                </span>
-                              )}
-
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-
-                              <div className="flex items-start justify-between gap-2">
-
-                                <p className="font-black text-sm truncate">
-                                  {
-                                    conversation.listing_title
-                                  }
-                                </p>
-
-                                {conversation.unread_count >
-                                  0 && (
-                                  <span className="shrink-0 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] font-black flex items-center justify-center">
-                                    {conversation.unread_count >
-                                    99
-                                      ? "99+"
-                                      : conversation.unread_count}
-                                  </span>
-                                )}
-
-                              </div>
-
-                              <p className="text-xs text-[#888888] mt-1">
-                                {formatDate(
-                                  conversation.last_message_at
-                                )}
-                              </p>
-
-                              <p
-                                className={`text-sm mt-2 truncate ${
-                                  conversation.unread_count >
-                                  0
-                                    ? "text-white font-bold"
-                                    : "text-[#777777]"
-                                }`}
-                              >
-                                {
-                                  conversation.last_message
-                                }
-                              </p>
-
-                            </div>
-
-                          </div>
-
-                        </button>
-                      );
-                    }
-                  )}
+                  </div>
 
                 </div>
 
-              </div>
+                <div className="overflow-y-auto flex-1">
 
-              {/* CHAT */}
+                  {conversations.length === 0 ? (
 
-              <div className="bg-[#181818] border border-[#303030] rounded-2xl overflow-hidden flex flex-col min-h-[650px]">
+                    <div className="p-6 text-center">
 
-                {selectedConversation ? (
-
-                  <>
-                    {/* CHAT HEADER */}
-
-                    <div className="px-5 py-4 border-b border-[#303030] flex items-center justify-between gap-4">
-
-                      <div className="flex items-center gap-3 min-w-0">
-
-                        <div className="w-11 h-11 rounded-xl bg-[#222222] border border-[#333333] shrink-0 overflow-hidden flex items-center justify-center">
-
-                          {selectedConversation.listing_image ? (
-                            <img
-                              src={
-                                selectedConversation.listing_image
-                              }
-                              alt=""
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <span>
-                              📦
-                            </span>
-                          )}
-
-                        </div>
-
-                        <div className="min-w-0">
-
-                          <p className="text-xs uppercase tracking-wide font-bold text-[#777777]">
-                            Listing
-                          </p>
-
-                          <h2 className="font-black truncate">
-                            {
-                              selectedConversation.listing_title
-                            }
-                          </h2>
-
-                        </div>
-
+                      <div className="text-5xl">
+                        💬
                       </div>
 
-                      <Link
-                        href={`/listing?id=${encodeURIComponent(
-                          String(
-                            selectedConversation.listing_id
-                          )
-                        )}`}
-                        className="shrink-0 bg-white hover:bg-gray-200 text-black px-4 py-2 rounded-xl text-sm font-black transition"
-                      >
-                        View Listing
-                      </Link>
+                      <p className="font-black mt-4">
+                        No conversations
+                      </p>
+
+                      <p className="text-sm text-[#777777] mt-2">
+                        Your conversations will appear here.
+                      </p>
 
                     </div>
 
-                    {/* CHAT MESSAGES */}
+                  ) : (
 
-                    <div className="flex-1 p-5 space-y-3 overflow-y-auto bg-[#111111]">
+                    <div className="p-2">
 
-                      {selectedMessages.map(
-                        (message) => {
+                      {conversations.map((conversation) => {
 
-                          const mine =
-                            message.sender_id ===
-                            userId;
+                        const active =
+                          conversation.key === selectedKey;
 
-                          return (
-                            <div
-                              key={message.id}
-                              className={`flex ${
-                                mine
-                                  ? "justify-end"
-                                  : "justify-start"
-                              }`}
-                            >
+                        const listingTitle =
+                          conversation.listing?.title ||
+                          "Listing";
 
-                              <div
-                                className={`max-w-[80%] ${
-                                  mine
-                                    ? "bg-white text-black"
-                                    : "bg-[#292929] text-white"
-                                } rounded-2xl px-4 py-3`}
-                              >
+                        return (
+                          <button
+                            key={conversation.key}
+                            type="button"
+                            onClick={() =>
+                              setSelectedKey(
+                                conversation.key
+                              )
+                            }
+                            className={`w-full text-left rounded-xl p-3 mb-1 transition ${
+                              active
+                                ? "bg-white text-black"
+                                : "hover:bg-[#222222] text-white"
+                            }`}
+                          >
 
-                                <p className="text-sm whitespace-pre-wrap break-words">
-                                  {message.text}
+                            <div className="flex items-start gap-3">
+
+                              {conversation.listing?.image ? (
+
+                                <img
+                                  src={
+                                    conversation.listing.image
+                                  }
+                                  alt=""
+                                  className="w-12 h-12 rounded-xl object-cover shrink-0"
+                                />
+
+                              ) : (
+
+                                <div
+                                  className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0 ${
+                                    active
+                                      ? "bg-black/10"
+                                      : "bg-[#292929]"
+                                  }`}
+                                >
+                                  📦
+                                </div>
+
+                              )}
+
+                              <div className="min-w-0 flex-1">
+
+                                <div className="flex items-center justify-between gap-2">
+
+                                  <p className="font-black truncate">
+                                    {listingTitle}
+                                  </p>
+
+                                  {conversation.unreadCount >
+                                    0 && (
+                                    <span
+                                      className={`min-w-5 h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                                        active
+                                          ? "bg-black text-white"
+                                          : "bg-red-600 text-white"
+                                      }`}
+                                    >
+                                      {conversation.unreadCount >
+                                      99
+                                        ? "99+"
+                                        : conversation.unreadCount}
+                                    </span>
+                                  )}
+
+                                </div>
+
+                                <p
+                                  className={`text-xs mt-1 truncate ${
+                                    active
+                                      ? "text-gray-600"
+                                      : "text-[#777777]"
+                                  }`}
+                                >
+                                  {conversation.lastMessage.text}
                                 </p>
 
                                 <p
-                                  className={`text-[10px] mt-2 ${
-                                    mine
+                                  className={`text-[10px] mt-1 ${
+                                    active
                                       ? "text-gray-500"
-                                      : "text-[#888888]"
+                                      : "text-[#555555]"
                                   }`}
                                 >
-                                  {formatDate(
-                                    message.created_at
+                                  {formatConversationDate(
+                                    conversation.lastMessage
+                                      .created_at
                                   )}
                                 </p>
 
                               </div>
 
                             </div>
-                          );
-                        }
-                      )}
+
+                          </button>
+                        );
+                      })}
 
                     </div>
 
-                    {/* SEND MESSAGE */}
+                  )}
 
-                    <form
-                      onSubmit={sendMessage}
-                      className="p-4 border-t border-[#303030] bg-[#181818]"
-                    >
+                </div>
 
-                      <div className="flex gap-2">
+              </aside>
 
-                        <input
-                          value={text}
-                          onChange={(event) =>
-                            setText(
-                              event.target.value
-                            )
-                          }
-                          placeholder="Write a message..."
-                          className="flex-1 bg-[#111111] border border-[#333333] focus:border-[#666666] outline-none rounded-xl px-4 py-3 text-white placeholder:text-[#666666]"
-                        />
+              {/* CHAT */}
+              <section className="bg-[#181818] border border-[#303030] rounded-2xl overflow-hidden flex flex-col min-h-[600px] lg:min-h-0">
 
-                        <button
-                          type="submit"
-                          disabled={
-                            sending ||
-                            !text.trim()
-                          }
-                          className="bg-white hover:bg-gray-200 disabled:bg-[#333333] disabled:text-[#777777] text-black px-5 py-3 rounded-xl font-black transition"
-                        >
-                          {sending
-                            ? "..."
-                            : "Send"}
-                        </button>
+                {!selectedConversation ? (
 
-                      </div>
-
-                    </form>
-                  </>
-
-                ) : (
-
-                  <div className="flex-1 flex items-center justify-center text-center p-10">
+                  <div className="flex-1 flex items-center justify-center text-center p-8">
 
                     <div>
 
@@ -889,7 +814,7 @@ export default function MessagesPage() {
                         Select a conversation
                       </h2>
 
-                      <p className="text-[#888888] mt-2">
+                      <p className="text-[#777777] mt-2">
                         Choose a conversation from the left.
                       </p>
 
@@ -897,9 +822,169 @@ export default function MessagesPage() {
 
                   </div>
 
+                ) : (
+
+                  <>
+                    {/* CHAT HEADER */}
+                    <div className="px-4 sm:px-6 py-4 border-b border-[#303030] shrink-0">
+
+                      <div className="flex items-center justify-between gap-4">
+
+                        <div className="min-w-0">
+
+                          <p className="text-xs uppercase tracking-[0.18em] text-[#777777] font-bold">
+                            Conversation
+                          </p>
+
+                          <h2 className="font-black text-lg truncate mt-1">
+                            {selectedConversation.listing
+                              ?.title || "Listing"}
+                          </h2>
+
+                        </div>
+
+                        <Link
+                          href={`/listing?id=${encodeURIComponent(
+                            String(
+                              selectedConversation.listingId
+                            )
+                          )}`}
+                          className="shrink-0 bg-white hover:bg-gray-200 text-black px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition"
+                        >
+                          View Listing
+                        </Link>
+
+                      </div>
+
+                    </div>
+
+                    {/* MESSAGES - ONLY THIS AREA SCROLLS */}
+                    <div
+                      ref={messagesContainerRef}
+                      className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 py-5"
+                    >
+
+                      <div className="space-y-3">
+
+                        {selectedConversation.messages.map(
+                          (message) => {
+
+                            const mine =
+                              message.sender_id ===
+                              userId;
+
+                            return (
+                              <div
+                                key={message.id}
+                                className={`flex ${
+                                  mine
+                                    ? "justify-end"
+                                    : "justify-start"
+                                }`}
+                              >
+
+                                <div
+                                  className={`max-w-[80%] sm:max-w-[70%] ${
+                                    mine
+                                      ? "items-end"
+                                      : "items-start"
+                                  } flex flex-col`}
+                                >
+
+                                  <div
+                                    className={`px-4 py-3 rounded-2xl break-words whitespace-pre-wrap ${
+                                      mine
+                                        ? "bg-white text-black rounded-br-md"
+                                        : "bg-[#292929] text-white rounded-bl-md"
+                                    }`}
+                                  >
+                                    {message.text}
+                                  </div>
+
+                                  <div
+                                    className={`text-[10px] text-[#666666] mt-1 px-1 ${
+                                      mine
+                                        ? "text-right"
+                                        : "text-left"
+                                    }`}
+                                  >
+                                    {formatMessageTime(
+                                      message.created_at
+                                    )}
+                                  </div>
+
+                                </div>
+
+                              </div>
+                            );
+                          }
+                        )}
+
+                        {/* AUTO-SCROLL TARGET */}
+                        <div
+                          ref={messagesEndRef}
+                          className="h-px"
+                        />
+
+                      </div>
+
+                    </div>
+
+                    {/* MESSAGE INPUT */}
+                    <form
+                      onSubmit={sendMessage}
+                      className="border-t border-[#303030] p-3 sm:p-4 shrink-0 bg-[#151515]"
+                    >
+
+                      <div className="flex items-end gap-2">
+
+                        <textarea
+                          value={text}
+                          onChange={(event) =>
+                            setText(event.target.value)
+                          }
+                          onKeyDown={(event) => {
+                            if (
+                              event.key === "Enter" &&
+                              !event.shiftKey
+                            ) {
+                              event.preventDefault();
+
+                              if (!sending) {
+                                event.currentTarget.form?.requestSubmit();
+                              }
+                            }
+                          }}
+                          rows={1}
+                          placeholder="Write a message..."
+                          className="flex-1 resize-none bg-[#202020] border border-[#3a3a3a] focus:border-[#666666] outline-none text-white placeholder:text-[#666666] rounded-xl px-4 py-3 text-sm min-h-[46px] max-h-32 overflow-y-auto"
+                        />
+
+                        <button
+                          type="submit"
+                          disabled={
+                            sending ||
+                            !text.trim()
+                          }
+                          className="bg-white hover:bg-gray-200 disabled:bg-[#333333] disabled:text-[#777777] text-black disabled:cursor-not-allowed px-5 py-3 rounded-xl font-black text-sm transition shrink-0"
+                        >
+                          {sending
+                            ? "..."
+                            : "Send"}
+                        </button>
+
+                      </div>
+
+                      <p className="text-[10px] text-[#555555] mt-2 px-1">
+                        Press Enter to send • Shift + Enter for a new line
+                      </p>
+
+                    </form>
+                  </>
+
                 )}
 
-              </div>
+              </section>
 
             </div>
 
@@ -910,7 +995,6 @@ export default function MessagesPage() {
       </section>
 
       {/* CTA */}
-
       <section className="w-full px-3 sm:px-5 lg:px-7 pb-8">
 
         <div className="w-full max-w-7xl mx-auto bg-white text-black rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-5">
@@ -918,7 +1002,7 @@ export default function MessagesPage() {
           <div>
 
             <p className="text-xl sm:text-2xl font-black">
-              Want to sell something?
+              Have something to sell?
             </p>
 
             <p className="text-gray-500 text-sm mt-1">
@@ -939,7 +1023,6 @@ export default function MessagesPage() {
       </section>
 
       {/* FOOTER */}
-
       <footer className="bg-black text-gray-400 shrink-0 border-t border-gray-800">
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
