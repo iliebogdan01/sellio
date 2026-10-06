@@ -50,63 +50,67 @@ export default function HomePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    loadUser();
-    loadListings();
+    loadData();
   }, []);
 
-  async function loadUser() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setUserId(null);
-      return;
-    }
-
-    setUserId(user.id);
-    loadFavourites(user.id);
-  }
-
-  async function loadFavourites(id: string) {
-    const { data } = await supabase
-      .from("favourites")
-      .select("listing_id")
-      .eq("user_id", id);
-
-    if (data) {
-      setFavourites(data.map((item) => Number(item.listing_id)));
-    }
-  }
-
-  async function loadListings() {
+  async function loadData() {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("listings")
-      .select(
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      setUserId(user?.id ?? null);
+
+      const { data: listingsData, error: listingsError } = await supabase
+        .from("listings")
+        .select(
+          `
+          id,
+          title,
+          price,
+          location,
+          category,
+          description,
+          image,
+          images,
+          user_id,
+          created_at,
+          promoted,
+          promoted_until
         `
-        id,
-        title,
-        price,
-        location,
-        category,
-        description,
-        image,
-        images,
-        user_id,
-        created_at,
-        promoted,
-        promoted_until
-      `
-      )
-      .order("created_at", { ascending: false });
+        )
+        .order("created_at", { ascending: false });
 
-    if (!error && data) {
-      setListings(data as Listing[]);
+      if (listingsError) {
+        console.error("Listings error:", listingsError);
+      }
+
+      setListings((listingsData as Listing[]) || []);
+
+      if (user) {
+        const { data: favouritesData, error: favouritesError } =
+          await supabase
+            .from("favourites")
+            .select("listing_id")
+            .eq("user_id", user.id);
+
+        if (favouritesError) {
+          console.error("Favourites error:", favouritesError);
+        }
+
+        setFavourites(
+          (favouritesData || []).map((item) => Number(item.listing_id))
+        );
+      } else {
+        setFavourites([]);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   async function toggleFavourite(listingId: number) {
@@ -115,74 +119,82 @@ export default function HomePage() {
       return;
     }
 
-    const alreadyFavourite = favourites.includes(listingId);
+    const isFavourite = favourites.includes(listingId);
 
-    if (alreadyFavourite) {
-      await supabase
+    if (isFavourite) {
+      const { error } = await supabase
         .from("favourites")
         .delete()
         .eq("user_id", userId)
         .eq("listing_id", listingId);
 
-      setFavourites((prev) =>
-        prev.filter((id) => id !== listingId)
+      if (error) {
+        console.error("Remove favourite error:", error);
+        return;
+      }
+
+      setFavourites((current) =>
+        current.filter((id) => id !== listingId)
       );
     } else {
-      await supabase.from("favourites").insert({
+      const { error } = await supabase.from("favourites").insert({
         user_id: userId,
         listing_id: listingId,
       });
 
-      setFavourites((prev) => [...prev, listingId]);
+      if (error) {
+        console.error("Add favourite error:", error);
+        return;
+      }
+
+      setFavourites((current) => [...current, listingId]);
     }
   }
 
-  const isPromoted = (listing: Listing) => {
-    if (!listing.promoted) return false;
-
-    if (!listing.promoted_until) return true;
-
-    return new Date(listing.promoted_until) > new Date();
-  };
-
   const filteredListings = useMemo(() => {
-    const searchText = search.toLowerCase().trim();
+    let result = [...listings];
 
-    let result = listings.filter((listing) => {
-      const matchesSearch =
-        !searchText ||
-        listing.title.toLowerCase().includes(searchText) ||
-        listing.description?.toLowerCase().includes(searchText) ||
-        listing.location?.toLowerCase().includes(searchText);
+    const searchValue = search.trim().toLowerCase();
 
-      const matchesCategory =
-        !selectedCategory ||
-        listing.category === selectedCategory;
+    if (searchValue) {
+      result = result.filter((item) => {
+        const text = [
+          item.title,
+          item.description,
+          item.location,
+          item.category,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
 
-      const price = Number(listing.price);
+        return text.includes(searchValue);
+      });
+    }
 
-      const matchesMinPrice =
-        !minPrice || price >= Number(minPrice);
-
-      const matchesMaxPrice =
-        !maxPrice || price <= Number(maxPrice);
-
-      return (
-        matchesSearch &&
-        matchesCategory &&
-        matchesMinPrice &&
-        matchesMaxPrice
+    if (selectedCategory) {
+      result = result.filter(
+        (item) => item.category === selectedCategory
       );
-    });
+    }
 
-    result = [...result].sort((a, b) => {
-      if (sortBy === "newest") {
-        return (
-          new Date(b.created_at).getTime() -
-          new Date(a.created_at).getTime()
-        );
-      }
+    if (minPrice) {
+      const min = Number(minPrice);
 
+      result = result.filter((item) => {
+        return Number(item.price) >= min;
+      });
+    }
+
+    if (maxPrice) {
+      const max = Number(maxPrice);
+
+      result = result.filter((item) => {
+        return Number(item.price) <= max;
+      });
+    }
+
+    result.sort((a, b) => {
       if (sortBy === "oldest") {
         return (
           new Date(a.created_at).getTime() -
@@ -198,11 +210,14 @@ export default function HomePage() {
         return Number(b.price) - Number(a.price);
       }
 
-      if (sortBy === "title") {
+      if (sortBy === "a-z") {
         return a.title.localeCompare(b.title);
       }
 
-      return 0;
+      return (
+        new Date(b.created_at).getTime() -
+        new Date(a.created_at).getTime()
+      );
     });
 
     return result;
@@ -210,9 +225,9 @@ export default function HomePage() {
     listings,
     search,
     selectedCategory,
-    sortBy,
     minPrice,
     maxPrice,
+    sortBy,
   ]);
 
   function clearFilters() {
@@ -223,272 +238,217 @@ export default function HomePage() {
     setSortBy("newest");
   }
 
+  function isPromoted(item: Listing) {
+    if (!item.promoted) return false;
+
+    if (!item.promoted_until) return true;
+
+    return new Date(item.promoted_until).getTime() > Date.now();
+  }
+
+  function getImage(item: Listing) {
+    if (item.image) return item.image;
+
+    if (item.images && item.images.length > 0) {
+      return item.images[0];
+    }
+
+    return null;
+  }
+
   return (
-    <main className="min-h-screen w-full overflow-x-hidden bg-[#f6f6f6] text-black">
+    <main className="min-h-screen bg-[#f5f5f5] text-black">
+      {/* HEADER */}
+      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white shadow-sm">
+        <div className="w-full px-4 sm:px-6 lg:px-8">
+          <div className="flex h-[72px] items-center gap-4">
+            {/* LOGO */}
+            <Link
+              href="/"
+              className="shrink-0 text-3xl font-black tracking-tight"
+            >
+              Sellio
+            </Link>
 
-      {/* =========================
-          HEADER
-      ========================== */}
-      <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white shadow-sm">
-        <div className="mx-auto flex h-[76px] w-full max-w-[1600px] items-center gap-4 px-4 sm:px-6 lg:px-8">
-
-          {/* LOGO */}
-          <Link
-            href="/"
-            onClick={() => setMobileMenuOpen(false)}
-            className="shrink-0 text-3xl font-black tracking-[-1.5px] sm:text-4xl"
-          >
-            Sellio
-          </Link>
-
-          {/* DESKTOP SEARCH */}
-          <div className="hidden min-w-0 flex-1 md:block">
-            <div className="mx-auto flex h-12 max-w-[720px] overflow-hidden rounded-xl border border-gray-300 bg-gray-50 transition focus-within:border-black focus-within:bg-white">
-
-              <div className="flex flex-1 items-center">
-                <span className="pl-4 text-lg">
+            {/* DESKTOP SEARCH */}
+            <div className="hidden min-w-0 flex-1 md:block">
+              <div className="mx-auto flex max-w-[1100px] overflow-hidden rounded-xl border border-gray-300 bg-white">
+                <div className="flex items-center px-4 text-gray-400">
                   🔍
-                </span>
+                </div>
 
                 <input
-                  type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search for cars, electronics, fashion and more..."
-                  className="h-full w-full bg-transparent px-3 text-sm outline-none lg:text-base"
+                  placeholder="Search for anything..."
+                  className="h-12 min-w-0 flex-1 bg-transparent px-2 text-base outline-none"
                 />
+
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    className="px-4 text-gray-500 hover:text-black"
+                  >
+                    ✕
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {}}
+                  className="bg-black px-7 font-semibold text-white transition hover:bg-gray-800"
+                >
+                  Search
+                </button>
               </div>
-
-              <button
-                type="button"
-                className="px-7 font-bold text-white bg-black transition hover:bg-gray-800"
-              >
-                Search
-              </button>
             </div>
-          </div>
 
-          {/* DESKTOP ACTIONS */}
-          <div className="hidden shrink-0 items-center gap-1 lg:flex">
+            {/* DESKTOP ACTIONS */}
+            <div className="hidden shrink-0 items-center gap-2 lg:flex">
+              <Link
+                href="/favourites"
+                className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100"
+              >
+                ♡ Favourites
+              </Link>
 
-            <Link
-              href="/favourites"
-              className="rounded-lg px-3 py-2 text-sm font-semibold transition hover:bg-gray-100"
+              <Link
+                href="/my-listings"
+                className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100"
+              >
+                My Listings
+              </Link>
+
+              <Link
+                href="/messages"
+                className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100"
+              >
+                <MessageBadge />
+              </Link>
+
+              <Link
+                href="/profile"
+                className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100"
+              >
+                Profile
+              </Link>
+
+              <Link
+                href="/sell"
+                className="rounded-xl bg-black px-5 py-3 font-bold text-white transition hover:bg-gray-800"
+              >
+                + Sell
+              </Link>
+            </div>
+
+            {/* MOBILE MENU BUTTON */}
+            <button
+              onClick={() => setMobileMenuOpen((value) => !value)}
+              className="ml-auto rounded-lg border border-gray-300 px-3 py-2 text-xl md:hidden"
             >
-              ❤️ Favourites
-            </Link>
-
-            <Link
-              href="/my-listings"
-              className="rounded-lg px-3 py-2 text-sm font-semibold transition hover:bg-gray-100"
-            >
-              My Listings
-            </Link>
-
-            <Link
-              href="/messages"
-              className="flex h-10 items-center justify-center rounded-lg px-3 transition hover:bg-gray-100"
-              title="Messages"
-            >
-              <MessageBadge />
-            </Link>
-
-            <Link
-              href="/profile"
-              className="rounded-lg px-3 py-2 text-sm font-semibold transition hover:bg-gray-100"
-            >
-              👤 Profile
-            </Link>
-
-            <Link
-              href="/sell"
-              className="ml-2 rounded-lg bg-black px-5 py-3 text-sm font-bold text-white transition hover:bg-gray-800"
-            >
-              + Sell
-            </Link>
+              ☰
+            </button>
           </div>
 
           {/* MOBILE SEARCH */}
-          <div className="flex min-w-0 flex-1 md:hidden">
-            <div className="flex w-full overflow-hidden rounded-full border border-gray-300 bg-gray-50">
+          <div className="pb-3 md:hidden">
+            <div className="flex overflow-hidden rounded-xl border border-gray-300 bg-white">
+              <div className="flex items-center px-3 text-gray-400">
+                🔍
+              </div>
 
               <input
-                type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search listings..."
-                className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm outline-none"
+                placeholder="Search..."
+                className="h-11 min-w-0 flex-1 bg-transparent px-2 outline-none"
               />
 
-              <button
-                type="button"
-                className="flex h-10 w-10 shrink-0 items-center justify-center bg-black text-white"
-              >
-                🔍
-              </button>
-
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="px-3 text-gray-500"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           </div>
-
-          {/* MOBILE MENU */}
-          <button
-            type="button"
-            onClick={() =>
-              setMobileMenuOpen((current) => !current)
-            }
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 text-2xl transition hover:bg-gray-100 md:hidden"
-            aria-label="Open menu"
-            aria-expanded={mobileMenuOpen}
-          >
-            {mobileMenuOpen ? "✕" : "☰"}
-          </button>
-
         </div>
 
         {/* MOBILE MENU */}
         {mobileMenuOpen && (
-          <div className="border-t border-gray-200 bg-white px-3 py-3 shadow-lg md:hidden">
-
-            <div className="grid grid-cols-2 gap-2">
-
+          <div className="border-t border-gray-200 bg-white md:hidden">
+            <div className="space-y-1 px-4 py-4">
               <Link
                 href="/"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold transition hover:bg-gray-100"
+                className="block rounded-lg px-4 py-3 font-medium hover:bg-gray-100"
               >
-                🏠
-                <span>Home</span>
+                🏠 Home
               </Link>
 
               <Link
                 href="/my-listings"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold transition hover:bg-gray-100"
+                className="block rounded-lg px-4 py-3 font-medium hover:bg-gray-100"
               >
-                📋
-                <span>My Listings</span>
+                📋 My Listings
               </Link>
 
               <Link
                 href="/favourites"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold transition hover:bg-gray-100"
+                className="block rounded-lg px-4 py-3 font-medium hover:bg-gray-100"
               >
-                ❤️
-                <span>Favourites</span>
+                ♡ Favourites
               </Link>
 
               <Link
                 href="/messages"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold transition hover:bg-gray-100"
+                className="block rounded-lg px-4 py-3 font-medium hover:bg-gray-100"
               >
-                💬
-                <span>Messages</span>
+                💬 Messages
               </Link>
 
               <Link
                 href="/profile"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold transition hover:bg-gray-100"
+                className="block rounded-lg px-4 py-3 font-medium hover:bg-gray-100"
               >
-                👤
-                <span>Profile</span>
+                👤 Profile
               </Link>
 
               <Link
                 href="/sell"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 text-sm font-bold text-white transition hover:bg-gray-800"
+                className="block rounded-xl bg-black px-4 py-3 text-center font-bold text-white"
               >
                 + Sell
               </Link>
-
             </div>
           </div>
         )}
       </header>
 
-
-      {/* =========================
-          DESKTOP CATEGORY BAR
-      ========================== */}
-      <section className="hidden border-b border-gray-200 bg-white md:block">
-        <div className="mx-auto w-full max-w-[1600px] px-6 py-5 lg:px-8">
-
-          <div className="flex items-center justify-between gap-4">
-
-            <div className="flex min-w-0 flex-1 gap-3 overflow-x-auto">
-
-              <button
-                type="button"
-                onClick={() => setSelectedCategory("")}
-                className={`flex shrink-0 items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
-                  selectedCategory === ""
-                    ? "border-black bg-black text-white"
-                    : "border-gray-200 bg-white hover:border-black"
-                }`}
-              >
-                🔥 All
-              </button>
-
-              {categories.map((category) => (
-                <button
-                  key={category.name}
-                  type="button"
-                  onClick={() =>
-                    setSelectedCategory(
-                      selectedCategory === category.name
-                        ? ""
-                        : category.name
-                    )
-                  }
-                  className={`flex shrink-0 items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
-                    selectedCategory === category.name
-                      ? "border-black bg-black text-white"
-                      : "border-gray-200 bg-white hover:border-black"
-                  }`}
-                >
-                  <span>{category.icon}</span>
-                  <span>{category.name}</span>
-                </button>
-              ))}
-
-            </div>
-
-          </div>
-
-        </div>
-      </section>
-
-
-      {/* =========================
-          MOBILE CATEGORIES
-      ========================== */}
-      <section className="w-full overflow-hidden border-b bg-white md:hidden">
-        <div className="w-full px-3 py-4">
-
-          <div className="flex gap-2 overflow-x-auto pb-1">
-
+      {/* DESKTOP CATEGORY BAR */}
+      <div className="hidden border-b border-gray-200 bg-white lg:block">
+        <div className="w-full overflow-x-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex min-w-max items-center gap-2 py-3">
             <button
-              type="button"
               onClick={() => setSelectedCategory("")}
-              className={`flex min-w-[100px] shrink-0 flex-col items-center justify-center rounded-xl border p-3 text-center transition ${
-                selectedCategory === ""
-                  ? "border-black bg-black text-white"
-                  : "border-gray-200 bg-white"
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                !selectedCategory
+                  ? "bg-black text-white"
+                  : "bg-gray-100 hover:bg-gray-200"
               }`}
             >
-              <span className="text-2xl">🔥</span>
-              <span className="mt-1 text-xs font-semibold">
-                All
-              </span>
+              All
             </button>
 
             {categories.map((category) => (
               <button
                 key={category.name}
-                type="button"
                 onClick={() =>
                   setSelectedCategory(
                     selectedCategory === category.name
@@ -496,483 +456,452 @@ export default function HomePage() {
                       : category.name
                   )
                 }
-                className={`flex min-w-[110px] shrink-0 flex-col items-center justify-center rounded-xl border p-3 text-center transition ${
+                className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
                   selectedCategory === category.name
-                    ? "border-black bg-black text-white"
-                    : "border-gray-200 bg-white"
+                    ? "bg-black text-white"
+                    : "bg-gray-100 hover:bg-gray-200"
                 }`}
               >
-                <span className="text-2xl">
-                  {category.icon}
-                </span>
-
-                <span className="mt-1 text-xs font-semibold">
-                  {category.name}
-                </span>
+                {category.icon} {category.name}
               </button>
             ))}
-
           </div>
         </div>
-      </section>
+      </div>
 
+      {/* MOBILE CATEGORIES */}
+      <div className="border-b border-gray-200 bg-white lg:hidden">
+        <div className="overflow-x-auto px-4 py-3">
+          <div className="flex min-w-max gap-2">
+            <button
+              onClick={() => setSelectedCategory("")}
+              className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+                !selectedCategory
+                  ? "border-black bg-black text-white"
+                  : "border-gray-200 bg-gray-50"
+              }`}
+            >
+              All
+            </button>
 
-      {/* =========================
-          MAIN CONTENT
-      ========================== */}
-      <div className="mx-auto w-full max-w-[1600px] px-3 py-6 sm:px-6 sm:py-8 lg:px-8">
+            {categories.map((category) => (
+              <button
+                key={category.name}
+                onClick={() =>
+                  setSelectedCategory(
+                    selectedCategory === category.name
+                      ? ""
+                      : category.name
+                  )
+                }
+                className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+                  selectedCategory === category.name
+                    ? "border-black bg-black text-white"
+                    : "border-gray-200 bg-gray-50"
+                }`}
+              >
+                <span className="mr-1">{category.icon}</span>
+                {category.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
-        {/* TOP AREA */}
-        <div className="mb-7 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-
+      {/* MAIN */}
+      <section className="w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <div className="mb-2 text-sm font-semibold text-gray-500">
-              Sellio Marketplace
-            </div>
-
-            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
-              Latest Listings
+            <h1 className="text-2xl font-black sm:text-3xl">
+              Find what you need
             </h1>
 
-            <p className="mt-2 text-sm text-gray-500 sm:text-base">
-              Discover great deals from sellers on Sellio
+            <p className="mt-1 text-sm text-gray-500">
+              Discover great deals from sellers on Sellio.
             </p>
           </div>
 
-          {/* SORT */}
-          <div className="flex items-center gap-2">
-
-            <span className="hidden text-sm font-medium text-gray-500 sm:block">
-              Sort by
-            </span>
-
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold outline-none transition focus:border-black"
-            >
-              <option value="newest">
-                Newest first
-              </option>
-
-              <option value="oldest">
-                Oldest first
-              </option>
-
-              <option value="price-low">
-                Price: Low to High
-              </option>
-
-              <option value="price-high">
-                Price: High to Low
-              </option>
-
-              <option value="title">
-                A - Z
-              </option>
-            </select>
-
+          <div className="text-sm text-gray-500">
+            <span className="font-semibold text-black">
+              {filteredListings.length}
+            </span>{" "}
+            {filteredListings.length === 1 ? "listing" : "listings"}
           </div>
-
         </div>
 
+        <div className="grid gap-6 lg:grid-cols-[250px_minmax(0,1fr)]">
+          {/* SIDEBAR */}
+          <aside className="hidden h-fit rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:block">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-bold">Filters</h2>
 
-        {/* DESKTOP FILTER + LISTINGS */}
-        <div className="grid grid-cols-1 gap-7 lg:grid-cols-[240px_minmax(0,1fr)]">
-
-          {/* FILTER SIDEBAR */}
-          <aside className="hidden lg:block">
-
-            <div className="sticky top-24 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-black">
-                  Filters
-                </h2>
-
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="text-xs font-semibold text-gray-500 hover:text-black"
-                >
-                  Clear
-                </button>
-              </div>
-
-              {/* CATEGORY */}
-              <div className="mt-6">
-
-                <h3 className="text-sm font-bold">
-                  Category
-                </h3>
-
-                <div className="mt-3 space-y-1">
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCategory("")}
-                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-                      selectedCategory === ""
-                        ? "bg-black font-bold text-white"
-                        : "hover:bg-gray-100"
-                    }`}
-                  >
-                    <span>All categories</span>
-                  </button>
-
-                  {categories.map((category) => (
-                    <button
-                      key={category.name}
-                      type="button"
-                      onClick={() =>
-                        setSelectedCategory(category.name)
-                      }
-                      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
-                        selectedCategory === category.name
-                          ? "bg-black font-bold text-white"
-                          : "hover:bg-gray-100"
-                      }`}
-                    >
-                      <span>{category.icon}</span>
-                      <span>{category.name}</span>
-                    </button>
-                  ))}
-
-                </div>
-
-              </div>
-
-
-              {/* PRICE */}
-              <div className="mt-7 border-t border-gray-200 pt-6">
-
-                <h3 className="text-sm font-bold">
-                  Price
-                </h3>
-
-                <div className="mt-3 grid grid-cols-2 gap-2">
-
-                  <input
-                    type="number"
-                    min="0"
-                    value={minPrice}
-                    onChange={(e) => setMinPrice(e.target.value)}
-                    placeholder="Min £"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-black"
-                  />
-
-                  <input
-                    type="number"
-                    min="0"
-                    value={maxPrice}
-                    onChange={(e) => setMaxPrice(e.target.value)}
-                    placeholder="Max £"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-black"
-                  />
-
-                </div>
-
-              </div>
-
-
-              {/* ACTIVE FILTER */}
-              {(selectedCategory || minPrice || maxPrice) && (
-                <div className="mt-6 rounded-xl bg-gray-50 p-3">
-
-                  <div className="text-xs font-bold uppercase tracking-wide text-gray-500">
-                    Active filters
-                  </div>
-
-                  <div className="mt-2 space-y-1 text-sm">
-
-                    {selectedCategory && (
-                      <div>
-                        📂 {selectedCategory}
-                      </div>
-                    )}
-
-                    {minPrice && (
-                      <div>
-                        💷 From £{minPrice}
-                      </div>
-                    )}
-
-                    {maxPrice && (
-                      <div>
-                        💷 Up to £{maxPrice}
-                      </div>
-                    )}
-
-                  </div>
-
-                </div>
-              )}
-
+              <button
+                onClick={clearFilters}
+                className="text-sm font-semibold text-gray-500 hover:text-black"
+              >
+                Clear
+              </button>
             </div>
 
+            {/* CATEGORY */}
+            <div className="mb-6">
+              <label className="mb-2 block text-sm font-semibold">
+                Category
+              </label>
+
+              <select
+                value={selectedCategory}
+                onChange={(e) =>
+                  setSelectedCategory(e.target.value)
+                }
+                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 outline-none focus:border-black"
+              >
+                <option value="">All categories</option>
+
+                {categories.map((category) => (
+                  <option
+                    key={category.name}
+                    value={category.name}
+                  >
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* PRICE */}
+            <div className="mb-6">
+              <label className="mb-2 block text-sm font-semibold">
+                Price
+              </label>
+
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  value={minPrice}
+                  onChange={(e) => setMinPrice(e.target.value)}
+                  placeholder="Min"
+                  className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-black"
+                />
+
+                <input
+                  type="number"
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(e.target.value)}
+                  placeholder="Max"
+                  className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-black"
+                />
+              </div>
+            </div>
+
+            {/* SORT */}
+            <div>
+              <label className="mb-2 block text-sm font-semibold">
+                Sort by
+              </label>
+
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 outline-none focus:border-black"
+              >
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+                <option value="price-low">
+                  Price: Low to High
+                </option>
+                <option value="price-high">
+                  Price: High to Low
+                </option>
+                <option value="a-z">A-Z</option>
+              </select>
+            </div>
           </aside>
 
+          {/* LISTINGS AREA */}
+          <div className="min-w-0">
+            {/* MOBILE FILTERS */}
+            <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm lg:hidden">
+              <div className="grid grid-cols-2 gap-3">
+                <select
+                  value={selectedCategory}
+                  onChange={(e) =>
+                    setSelectedCategory(e.target.value)
+                  }
+                  className="rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm outline-none"
+                >
+                  <option value="">All categories</option>
 
-          {/* LISTINGS */}
-          <section className="min-w-0">
+                  {categories.map((category) => (
+                    <option
+                      key={category.name}
+                      value={category.name}
+                    >
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
 
-            {/* RESULT BAR */}
-            <div className="mb-4 flex items-center justify-between">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm outline-none"
+                >
+                  <option value="newest">Newest</option>
+                  <option value="oldest">Oldest</option>
+                  <option value="price-low">
+                    Price Low
+                  </option>
+                  <option value="price-high">
+                    Price High
+                  </option>
+                  <option value="a-z">A-Z</option>
+                </select>
 
-              <div className="text-sm text-gray-500">
-                <span className="font-bold text-black">
-                  {filteredListings.length}
-                </span>{" "}
-                listings found
+                <input
+                  type="number"
+                  value={minPrice}
+                  onChange={(e) => setMinPrice(e.target.value)}
+                  placeholder="Min price"
+                  className="rounded-xl border border-gray-300 px-3 py-3 text-sm outline-none"
+                />
+
+                <input
+                  type="number"
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(e.target.value)}
+                  placeholder="Max price"
+                  className="rounded-xl border border-gray-300 px-3 py-3 text-sm outline-none"
+                />
               </div>
 
-              {(selectedCategory || minPrice || maxPrice || search) && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="text-sm font-semibold underline"
-                >
-                  Clear filters
-                </button>
-              )}
-
+              <button
+                onClick={clearFilters}
+                className="mt-3 w-full rounded-xl bg-gray-100 py-3 text-sm font-semibold hover:bg-gray-200"
+              >
+                Clear filters
+              </button>
             </div>
 
-
+            {/* LISTINGS */}
             {loading ? (
-              <div className="rounded-2xl border bg-white py-24 text-center text-gray-500">
-                Loading listings...
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+                {Array.from({ length: 10 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="overflow-hidden rounded-2xl border border-gray-200 bg-white"
+                  >
+                    <div className="aspect-[4/3] animate-pulse bg-gray-200" />
+
+                    <div className="space-y-3 p-4">
+                      <div className="h-5 animate-pulse rounded bg-gray-200" />
+                      <div className="h-4 w-1/2 animate-pulse rounded bg-gray-200" />
+                      <div className="h-4 w-2/3 animate-pulse rounded bg-gray-200" />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : filteredListings.length === 0 ? (
+              <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 text-center shadow-sm">
+                <div className="text-5xl">🔎</div>
 
-              <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-12 text-center">
-
-                <div className="text-6xl">
-                  📦
-                </div>
-
-                <h2 className="mt-5 text-2xl font-black">
+                <h2 className="mt-4 text-xl font-bold">
                   No listings found
                 </h2>
 
                 <p className="mt-2 text-gray-500">
-                  Try another search or change your filters.
+                  Try changing your search or filters.
                 </p>
 
                 <button
-                  type="button"
                   onClick={clearFilters}
-                  className="mt-6 rounded-lg bg-black px-6 py-3 text-sm font-bold text-white hover:bg-gray-800"
+                  className="mt-5 rounded-xl bg-black px-6 py-3 font-semibold text-white hover:bg-gray-800"
                 >
                   Clear filters
                 </button>
-
               </div>
-
             ) : (
-
-              <div className="grid w-full grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-
-                {filteredListings.map((listing) => {
-
-                  const favourite = favourites.includes(
-                    listing.id
-                  );
-
-                  const promoted = isPromoted(listing);
-
-                  const image =
-                    listing.image ||
-                    (listing.images &&
-                    listing.images.length > 0
-                      ? listing.images[0]
-                      : null);
+              <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                {filteredListings.map((item) => {
+                  const image = getImage(item);
+                  const promoted = isPromoted(item);
+                  const favourite = favourites.includes(item.id);
 
                   return (
                     <article
-                      key={listing.id}
-                      className="group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-xl"
+                      key={item.id}
+                      className="group min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-lg"
                     >
-
                       {/* IMAGE */}
-                      <Link
-                        href={`/listing?id=${listing.id}`}
-                        className="relative block aspect-[4/3] w-full overflow-hidden bg-gray-100"
-                      >
-
+                      <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                         {image ? (
                           <img
                             src={image}
-                            alt={listing.title}
+                            alt={item.title}
                             className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                           />
                         ) : (
-                          <div className="flex h-full w-full items-center justify-center text-5xl text-gray-400">
+                          <div className="flex h-full items-center justify-center text-5xl text-gray-300">
                             📷
                           </div>
                         )}
 
                         {promoted && (
-                          <div className="absolute left-3 top-3 rounded-full bg-black px-3 py-1.5 text-xs font-bold text-white shadow">
+                          <div className="absolute left-3 top-3 rounded-lg bg-black px-3 py-1.5 text-xs font-bold text-white shadow">
                             PROMOTED
                           </div>
                         )}
 
-                      </Link>
-
-
-                      {/* FAVOURITE */}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          toggleFavourite(listing.id)
-                        }
-                        className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white text-xl shadow-lg transition hover:scale-110"
-                        title={
-                          favourite
-                            ? "Remove from favourites"
-                            : "Add to favourites"
-                        }
-                      >
-                        {favourite ? "❤️" : "🤍"}
-                      </button>
-
-
-                      {/* INFO */}
-                      <div className="flex flex-1 flex-col p-5">
-
-                        <Link
-                          href={`/listing?id=${listing.id}`}
-                          className="line-clamp-2 text-lg font-bold leading-tight hover:underline"
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            toggleFavourite(item.id);
+                          }}
+                          className={`absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-xl shadow-md backdrop-blur transition hover:scale-105 ${
+                            favourite
+                              ? "text-red-500"
+                              : "text-gray-700"
+                          }`}
+                          aria-label="Favourite"
                         >
-                          {listing.title}
-                        </Link>
-
-                        <div className="mt-3 text-2xl font-black">
-                          £
-                          {Number(
-                            listing.price
-                          ).toLocaleString()}
-                        </div>
-
-                        {listing.location && (
-                          <div className="mt-3 truncate text-sm text-gray-500">
-                            📍 {listing.location}
-                          </div>
-                        )}
-
-                        {listing.category && (
-                          <div className="mt-1 truncate text-xs font-medium text-gray-400">
-                            {listing.category}
-                          </div>
-                        )}
-
-                        <Link
-                          href={`/listing?id=${listing.id}`}
-                          className="mt-5 flex w-full items-center justify-center rounded-xl bg-black px-4 py-3 text-sm font-bold text-white transition hover:bg-gray-800"
-                        >
-                          View Listing
-                        </Link>
-
+                          {favourite ? "♥" : "♡"}
+                        </button>
                       </div>
 
+                      {/* CONTENT */}
+                      <Link
+                        href={`/listing?id=${item.id}`}
+                        className="block"
+                      >
+                        <div className="p-4">
+                          <div className="mb-2 flex items-start justify-between gap-3">
+                            <h2 className="line-clamp-2 min-w-0 flex-1 text-base font-bold leading-tight">
+                              {item.title}
+                            </h2>
+                          </div>
+
+                          <div className="text-xl font-black">
+                            £
+                            {Number(item.price).toLocaleString(
+                              "en-GB"
+                            )}
+                          </div>
+
+                          <div className="mt-3 space-y-1 text-sm text-gray-500">
+                            {item.location && (
+                              <div className="truncate">
+                                📍 {item.location}
+                              </div>
+                            )}
+
+                            {item.category && (
+                              <div className="truncate">
+                                {item.category}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
+                            <span className="text-xs text-gray-400">
+                              {new Date(
+                                item.created_at
+                              ).toLocaleDateString("en-GB")}
+                            </span>
+
+                            <span className="text-sm font-bold">
+                              View listing →
+                            </span>
+                          </div>
+                        </div>
+                      </Link>
                     </article>
                   );
                 })}
-
               </div>
             )}
-
-          </section>
-
+          </div>
         </div>
+      </section>
 
+      {/* SELL CTA */}
+      <section className="w-full px-4 pb-10 sm:px-6 lg:px-8">
+        <div className="rounded-3xl bg-black px-6 py-10 text-white sm:px-10">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-2xl font-black sm:text-3xl">
+                Have something to sell?
+              </h2>
 
-        {/* CTA */}
-        <section className="mt-12 overflow-hidden rounded-3xl bg-black px-6 py-12 text-center text-white sm:mt-16 sm:px-10 sm:py-16">
-
-          <div className="mx-auto max-w-2xl">
-
-            <div className="mb-3 text-3xl">
-              🚀
+              <p className="mt-2 max-w-2xl text-gray-300">
+                Create your listing and reach buyers on Sellio.
+              </p>
             </div>
 
-            <h2 className="text-3xl font-black sm:text-4xl">
-              Have something to sell?
-            </h2>
-
-            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-gray-300 sm:text-base">
-              Create your listing and reach buyers on Sellio.
-            </p>
-
             <Link
               href="/sell"
-              className="mt-7 inline-flex rounded-xl bg-white px-8 py-3.5 font-bold text-black transition hover:bg-gray-200"
+              className="inline-flex w-fit rounded-xl bg-white px-6 py-3 font-bold text-black transition hover:bg-gray-200"
             >
-              + Create Listing
+              + Sell something
             </Link>
+          </div>
+        </div>
+      </section>
 
+      {/* FOOTER */}
+      <footer className="border-t border-gray-200 bg-white">
+        <div className="w-full px-4 py-8 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-2xl font-black">Sellio</div>
+
+              <p className="mt-1 text-sm text-gray-500">
+                Buy and sell anything, simply.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm font-medium text-gray-600">
+              <Link
+                href="/profile"
+                className="hover:text-black"
+              >
+                Profile
+              </Link>
+
+              <Link
+                href="/messages"
+                className="hover:text-black"
+              >
+                Messages
+              </Link>
+
+              <Link
+                href="/my-listings"
+                className="hover:text-black"
+              >
+                My Listings
+              </Link>
+
+              <Link
+                href="/favourites"
+                className="hover:text-black"
+              >
+                Favourites
+              </Link>
+
+              <Link
+                href="/sell"
+                className="hover:text-black"
+              >
+                Sell
+              </Link>
+            </div>
           </div>
 
-        </section>
-
-      </div>
-
-
-      {/* =========================
-          FOOTER
-      ========================== */}
-      <footer className="border-t border-gray-200 bg-white">
-
-        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-8 text-sm text-gray-500 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
-
-          <div>
+          <div className="mt-6 border-t border-gray-100 pt-5 text-xs text-gray-400">
             © {new Date().getFullYear()} Sellio. All rights reserved.
           </div>
-
-          <div className="flex flex-wrap gap-5">
-
-            <Link
-              href="/profile"
-              className="hover:text-black"
-            >
-              Profile
-            </Link>
-
-            <Link
-              href="/messages"
-              className="hover:text-black"
-            >
-              Messages
-            </Link>
-
-            <Link
-              href="/my-listings"
-              className="hover:text-black"
-            >
-              My Listings
-            </Link>
-
-            <Link
-              href="/favourites"
-              className="hover:text-black"
-            >
-              Favourites
-            </Link>
-
-            <Link
-              href="/sell"
-              className="font-semibold text-black hover:underline"
-            >
-              Sell
-            </Link>
-
-          </div>
-
         </div>
-
       </footer>
-
     </main>
   );
 }
