@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "../lib/supabase/client";
+import MessageBadge from "../components/MessageBadge";
 
 type Listing = {
   id: number;
@@ -32,12 +33,9 @@ const categories = [
 
 export default function HomePage() {
   const [listings, setListings] = useState<Listing[]>([]);
-
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-
   const [category, setCategory] = useState("All");
-
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -220,16 +218,7 @@ export default function HomePage() {
 
               {/* MESSAGES */}
 
-              <a
-                href="/messages"
-                className="group w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 transition"
-                title="Messages"
-                aria-label="Messages"
-              >
-                <span className="text-lg group-hover:scale-125 transition-transform">
-                  💬
-                </span>
-              </a>
+              <MessageBadge />
 
               {/* MY LISTINGS */}
 
@@ -306,9 +295,7 @@ export default function HomePage() {
                   type="text"
                   value={searchInput}
                   onChange={(event) =>
-                    setSearchInput(
-                      event.target.value
-                    )
+                    setSearchInput(event.target.value)
                   }
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
@@ -324,9 +311,7 @@ export default function HomePage() {
                 <select
                   value={category}
                   onChange={(event) =>
-                    setCategory(
-                      event.target.value
-                    )
+                    setCategory(event.target.value)
                   }
                   className="hidden lg:block w-44 bg-gray-100 border border-gray-300 rounded-xl px-2 py-2.5 outline-none text-sm font-semibold"
                 >
@@ -399,24 +384,19 @@ export default function HomePage() {
             <div className="flex gap-3 overflow-x-auto pb-1">
 
               {categories.map((item) => {
-
-                const active =
-                  category === item.name;
+                const active = category === item.name;
 
                 return (
                   <button
                     key={item.name}
                     type="button"
-                    onClick={() =>
-                      setCategory(item.name)
-                    }
+                    onClick={() => setCategory(item.name)}
                     className={`group shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 ${
                       active
                         ? "bg-gray-950 text-white shadow-md scale-[1.02]"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200 hover:-translate-y-0.5"
                     }`}
                   >
-
                     <span className="text-lg transition-transform duration-200 group-hover:scale-125 group-hover:rotate-3">
                       {item.icon}
                     </span>
@@ -424,10 +404,8 @@ export default function HomePage() {
                     <span>
                       {item.name}
                     </span>
-
                   </button>
                 );
-
               })}
 
             </div>
@@ -449,8 +427,7 @@ export default function HomePage() {
               </p>
 
               <h2 className="text-2xl sm:text-3xl font-black mt-1">
-                {search ||
-                category !== "All"
+                {search || category !== "All"
                   ? "Listings"
                   : "Latest Listings"}
               </h2>
@@ -468,9 +445,7 @@ export default function HomePage() {
 
           {/* SEARCH RESULT */}
 
-          {(search ||
-            category !== "All") && (
-
+          {(search || category !== "All") && (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-200 border border-gray-300 rounded-xl px-4 py-3 mb-5">
 
               <p className="text-sm text-gray-600">
@@ -484,15 +459,14 @@ export default function HomePage() {
                   </>
                 )}
 
-                {!search &&
-                  category !== "All" && (
-                    <>
-                      Category:{" "}
-                      <span className="font-bold text-gray-950">
-                        {category}
-                      </span>
-                    </>
-                  )}
+                {!search && category !== "All" && (
+                  <>
+                    Category:{" "}
+                    <span className="font-bold text-gray-950">
+                      {category}
+                    </span>
+                  </>
+                )}
 
               </p>
 
@@ -505,13 +479,11 @@ export default function HomePage() {
               </button>
 
             </div>
-
           )}
 
           {/* ERROR */}
 
           {errorMessage && (
-
             <div className="mb-5 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
 
               <p className="font-bold">
@@ -523,13 +495,11 @@ export default function HomePage() {
               </p>
 
             </div>
-
           )}
 
           {/* LOADING */}
 
           {loading ? (
-
             <div className="bg-white border border-gray-300 rounded-2xl py-20 text-center">
 
               <div className="w-10 h-10 border-4 border-gray-300 border-t-gray-950 rounded-full animate-spin mx-auto" />
@@ -539,9 +509,7 @@ export default function HomePage() {
               </p>
 
             </div>
-
           ) : filteredListings.length === 0 ? (
-
             <div className="bg-white border border-gray-300 rounded-2xl py-20 px-6 text-center">
 
               <div className="text-6xl">
@@ -562,9 +530,7 @@ export default function HomePage() {
 
               </p>
 
-              {(search ||
-                category !== "All") && (
-
+              {(search || category !== "All") && (
                 <button
                   type="button"
                   onClick={clearSearch}
@@ -572,22 +538,17 @@ export default function HomePage() {
                 >
                   Clear Search
                 </button>
-
               )}
 
             </div>
-
           ) : (
-
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
 
               {filteredListings.map((listing) => {
 
-                const promoted =
-                  isPromoted(listing);
+                const promoted = isPromoted(listing);
 
                 return (
-
                   <article
                     key={listing.id}
                     className={`group bg-white border rounded-2xl overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-200 ${
@@ -601,39 +562,26 @@ export default function HomePage() {
 
                     <button
                       type="button"
-                      onClick={() =>
-                        goToListing(
-                          listing.id
-                        )
-                      }
+                      onClick={() => goToListing(listing.id)}
                       className="block relative w-full text-left overflow-hidden"
                     >
 
                       {listing.image ? (
-
                         <img
                           src={listing.image}
-                          alt={
-                            listing.title ||
-                            "Listing"
-                          }
+                          alt={listing.title || "Listing"}
                           className="w-full h-40 sm:h-48 lg:h-52 object-cover group-hover:scale-[1.04] transition-transform duration-300"
                         />
-
                       ) : (
-
                         <div className="w-full h-40 sm:h-48 lg:h-52 bg-gray-200 flex items-center justify-center text-5xl">
                           📷
                         </div>
-
                       )}
 
                       {promoted && (
-
                         <span className="absolute top-2 left-2 bg-orange-500 text-white text-[10px] uppercase tracking-wide font-black px-2.5 py-1 rounded-lg shadow">
                           🚀 Promoted
                         </span>
-
                       )}
 
                     </button>
@@ -643,43 +591,31 @@ export default function HomePage() {
                     <div className="p-3 sm:p-4">
 
                       {listing.category && (
-
                         <p className="text-[10px] sm:text-xs uppercase tracking-wide text-gray-400 font-bold truncate">
                           {listing.category}
                         </p>
-
                       )}
 
                       <h3 className="font-black text-sm sm:text-base mt-1 line-clamp-2 min-h-[40px]">
-                        {listing.title ||
-                          "Untitled listing"}
+                        {listing.title || "Untitled listing"}
                       </h3>
 
                       <p className="text-lg sm:text-xl font-black mt-2">
                         £
-                        {Number(
-                          listing.price || 0
-                        ).toLocaleString(
+                        {Number(listing.price || 0).toLocaleString(
                           "en-GB"
                         )}
                       </p>
 
                       {listing.location && (
-
                         <p className="text-xs text-gray-500 mt-1.5 truncate">
-                          📍{" "}
-                          {listing.location}
+                          📍 {listing.location}
                         </p>
-
                       )}
 
                       <button
                         type="button"
-                        onClick={() =>
-                          goToListing(
-                            listing.id
-                          )
-                        }
+                        onClick={() => goToListing(listing.id)}
                         className="w-full mt-3 bg-gray-950 hover:bg-black text-white text-center py-2.5 rounded-xl text-xs sm:text-sm font-bold transition hover:scale-[1.01] active:scale-95"
                       >
                         View Listing
@@ -688,13 +624,10 @@ export default function HomePage() {
                     </div>
 
                   </article>
-
                 );
-
               })}
 
             </div>
-
           )}
 
         </section>
@@ -774,45 +707,27 @@ export default function HomePage() {
 
             <div className="flex flex-wrap justify-center gap-5 text-sm">
 
-              <a
-                href="/"
-                className="hover:text-white transition"
-              >
+              <a href="/" className="hover:text-white transition">
                 Home
               </a>
 
-              <a
-                href="/sell"
-                className="hover:text-white transition"
-              >
+              <a href="/sell" className="hover:text-white transition">
                 Sell
               </a>
 
-              <a
-                href="/my-listings"
-                className="hover:text-white transition"
-              >
+              <a href="/my-listings" className="hover:text-white transition">
                 My Listings
               </a>
 
-              <a
-                href="/favourites"
-                className="hover:text-white transition"
-              >
+              <a href="/favourites" className="hover:text-white transition">
                 Favourites
               </a>
 
-              <a
-                href="/messages"
-                className="hover:text-white transition"
-              >
+              <a href="/messages" className="hover:text-white transition">
                 Messages
               </a>
 
-              <a
-                href="/profile"
-                className="hover:text-white transition"
-              >
+              <a href="/profile" className="hover:text-white transition">
                 Profile
               </a>
 
