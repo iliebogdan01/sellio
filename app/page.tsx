@@ -239,14 +239,11 @@ export default function HomePage() {
       return `${days}d ago`;
     }
 
-    return listingDate.toLocaleDateString(
-      "en-GB",
-      {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }
-    );
+    return listingDate.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
   }
 
   const filteredListings = useMemo(() => {
@@ -470,13 +467,8 @@ export default function HomePage() {
                       : "bg-[#f1f1f1] text-gray-700 hover:bg-gray-200"
                   }`}
                 >
-                  <span>
-                    {item.icon}
-                  </span>
-
-                  <span>
-                    {item.name}
-                  </span>
+                  <span>{item.icon}</span>
+                  <span>{item.name}</span>
                 </button>
               );
             })}
@@ -664,10 +656,150 @@ export default function HomePage() {
                       }`}
                     >
 
-                      <div className="flex min-h-[190px] sm:min-h-[230px] lg:min-h-[250px]">
+                      {/* ========================= */}
+                      {/* MOBILE LISTING CARD        */}
+                      {/* ========================= */}
+
+                      <div className="sm:hidden">
+
+                        {/* MOBILE IMAGE */}
+                        <div className="relative w-full aspect-[4/3] bg-gray-100 overflow-hidden">
+
+                          {listing.image ? (
+
+                            <img
+                              src={listing.image}
+                              alt={
+                                listing.title ||
+                                "Listing"
+                              }
+                              className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+                            />
+
+                          ) : (
+
+                            <div className="absolute inset-0 flex items-center justify-center text-5xl bg-gray-100">
+                              📷
+                            </div>
+
+                          )}
+
+                          {/* PROMOTED */}
+                          {promoted && (
+                            <span className="absolute top-3 left-3 bg-black text-white text-[10px] uppercase tracking-wide font-black px-3 py-1.5 rounded-lg shadow-md">
+                              🚀 Promoted
+                            </span>
+                          )}
+
+                          {/* FAVOURITE */}
+                          <button
+                            type="button"
+                            onClick={(event) =>
+                              toggleFavourite(
+                                event,
+                                listing.id
+                              )
+                            }
+                            className={`absolute top-3 right-3 w-11 h-11 rounded-full border flex items-center justify-center text-xl shadow-md transition ${
+                              isFavourite
+                                ? "bg-red-50 border-red-200 text-red-600"
+                                : "bg-white/95 border-white text-gray-600 hover:text-red-600"
+                            }`}
+                            title={
+                              isFavourite
+                                ? "Remove from favourites"
+                                : "Add to favourites"
+                            }
+                            aria-label={
+                              isFavourite
+                                ? "Remove from favourites"
+                                : "Add to favourites"
+                            }
+                          >
+                            {isFavourite
+                              ? "❤️"
+                              : "♡"}
+                          </button>
+
+                        </div>
+
+                        {/* MOBILE INFO */}
+                        <div className="p-4">
+
+                          {/* CATEGORY + DATE */}
+                          <div className="flex items-center justify-between gap-3">
+
+                            {listing.category ? (
+                              <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold truncate">
+                                {listing.category}
+                              </p>
+                            ) : (
+                              <span />
+                            )}
+
+                            <span className="text-[11px] text-gray-400 shrink-0">
+                              {formatDate(
+                                listing.created_at
+                              )}
+                            </span>
+
+                          </div>
+
+                          {/* TITLE */}
+                          <h2 className="font-black text-lg leading-tight mt-2 line-clamp-2 group-hover:underline">
+                            {listing.title ||
+                              "Untitled listing"}
+                          </h2>
+
+                          {/* PRICE */}
+                          <p className="text-2xl font-black mt-3">
+                            £
+                            {Number(
+                              listing.price || 0
+                            ).toLocaleString(
+                              "en-GB"
+                            )}
+                          </p>
+
+                          {/* LOCATION */}
+                          {listing.location && (
+                            <p className="text-sm text-gray-500 mt-3 truncate">
+                              📍 {listing.location}
+                            </p>
+                          )}
+
+                          {/* DESCRIPTION */}
+                          {listing.description && (
+                            <p className="text-sm text-gray-500 mt-2 line-clamp-2">
+                              {listing.description}
+                            </p>
+                          )}
+
+                          {/* VIEW */}
+                          <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+
+                            <span className="text-xs text-gray-400">
+                              Sellio Marketplace
+                            </span>
+
+                            <span className="text-sm font-bold text-black">
+                              View →
+                            </span>
+
+                          </div>
+
+                        </div>
+
+                      </div>
+
+                      {/* ========================= */}
+                      {/* DESKTOP LISTING CARD      */}
+                      {/* ========================= */}
+
+                      <div className="hidden sm:flex min-h-[230px] lg:min-h-[250px]">
 
                         {/* IMAGE */}
-                        <div className="relative w-[180px] sm:w-[280px] md:w-[340px] lg:w-[390px] xl:w-[430px] shrink-0 bg-gray-100 overflow-hidden">
+                        <div className="relative w-[280px] md:w-[340px] lg:w-[390px] xl:w-[430px] shrink-0 bg-gray-100 overflow-hidden">
 
                           {listing.image ? (
 
@@ -697,19 +829,19 @@ export default function HomePage() {
                         </div>
 
                         {/* INFO */}
-                        <div className="flex-1 min-w-0 p-4 sm:p-6 lg:p-7 flex flex-col">
+                        <div className="flex-1 min-w-0 p-6 lg:p-7 flex flex-col">
 
                           <div className="flex items-start justify-between gap-4">
 
                             <div className="min-w-0">
 
                               {listing.category && (
-                                <p className="text-[10px] sm:text-xs uppercase tracking-wider text-gray-400 font-bold truncate">
+                                <p className="text-xs uppercase tracking-wider text-gray-400 font-bold truncate">
                                   {listing.category}
                                 </p>
                               )}
 
-                              <h2 className="font-black text-lg sm:text-2xl lg:text-[26px] leading-tight mt-2 line-clamp-2 group-hover:underline">
+                              <h2 className="font-black text-2xl lg:text-[26px] leading-tight mt-2 line-clamp-2 group-hover:underline">
                                 {listing.title ||
                                   "Untitled listing"}
                               </h2>
@@ -724,7 +856,7 @@ export default function HomePage() {
                                   listing.id
                                 )
                               }
-                              className={`shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-full border flex items-center justify-center text-xl transition ${
+                              className={`shrink-0 w-12 h-12 rounded-full border flex items-center justify-center text-xl transition ${
                                 isFavourite
                                   ? "bg-red-50 border-red-200 text-red-600"
                                   : "bg-white border-gray-200 text-gray-500 hover:text-red-600 hover:border-red-200"
@@ -748,7 +880,7 @@ export default function HomePage() {
                           </div>
 
                           {/* PRICE */}
-                          <p className="text-2xl sm:text-3xl lg:text-4xl font-black mt-4">
+                          <p className="text-3xl lg:text-4xl font-black mt-4">
                             £
                             {Number(
                               listing.price || 0
@@ -759,15 +891,15 @@ export default function HomePage() {
 
                           {/* DESCRIPTION */}
                           {listing.description && (
-                            <p className="hidden sm:block text-sm lg:text-base text-gray-500 mt-3 line-clamp-3 max-w-4xl">
+                            <p className="text-sm lg:text-base text-gray-500 mt-3 line-clamp-3 max-w-4xl">
                               {listing.description}
                             </p>
                           )}
 
                           {/* BOTTOM INFO */}
-                          <div className="mt-auto pt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="mt-auto pt-5 flex items-center justify-between gap-3">
 
-                            <div className="flex items-center gap-3 text-xs sm:text-sm text-gray-500 min-w-0">
+                            <div className="flex items-center gap-3 text-sm text-gray-500 min-w-0">
 
                               {listing.location && (
                                 <span className="truncate">
@@ -776,7 +908,7 @@ export default function HomePage() {
                                 </span>
                               )}
 
-                              <span className="hidden sm:inline text-gray-300">
+                              <span className="text-gray-300">
                                 •
                               </span>
 
@@ -788,7 +920,7 @@ export default function HomePage() {
 
                             </div>
 
-                            <span className="hidden sm:inline text-sm font-bold text-gray-400 group-hover:text-black transition">
+                            <span className="text-sm font-bold text-gray-400 group-hover:text-black transition">
                               View listing →
                             </span>
 

@@ -9,6 +9,7 @@ type Listing = {
   id: number;
   title: string;
   price: number | string;
+  phone: string | null;
   location: string | null;
   category: string | null;
   description: string | null;
@@ -48,27 +49,33 @@ function ListingPageContent() {
 
         const supabase = createClient();
 
-        const { data, error: supabaseError } = await supabase
-          .from("listings")
-          .select(`
-            id,
-            title,
-            price,
-            location,
-            category,
-            description,
-            image,
-            images,
-            promoted,
-            promoted_until,
-            created_at,
-            user_id
-          `)
-          .eq("id", listingId)
-          .maybeSingle();
+        const { data, error: supabaseError } =
+          await supabase
+            .from("listings")
+            .select(`
+              id,
+              title,
+              price,
+              phone,
+              location,
+              category,
+              description,
+              image,
+              images,
+              promoted,
+              promoted_until,
+              created_at,
+              user_id
+            `)
+            .eq("id", listingId)
+            .maybeSingle();
 
         if (supabaseError) {
-          console.error("Supabase error:", supabaseError);
+          console.error(
+            "Supabase error:",
+            supabaseError
+          );
+
           setError(supabaseError.message);
           setListing(null);
           setFavouriteChecking(false);
@@ -76,7 +83,10 @@ function ListingPageContent() {
         }
 
         if (!data) {
-          setError("This listing could not be found.");
+          setError(
+            "This listing could not be found."
+          );
+
           setListing(null);
           setFavouriteChecking(false);
           return;
@@ -87,22 +97,23 @@ function ListingPageContent() {
         setListing(loadedListing);
         setSelectedImage(0);
 
-        /*
-         * CHECK IF LISTING IS ALREADY A FAVOURITE
-         */
-
         const {
           data: { user },
         } = await supabase.auth.getUser();
 
         if (user) {
-          const { data: favourite, error: favouriteError } =
-            await supabase
-              .from("favourites")
-              .select("id")
-              .eq("user_id", user.id)
-              .eq("listing_id", loadedListing.id)
-              .maybeSingle();
+          const {
+            data: favourite,
+            error: favouriteError,
+          } = await supabase
+            .from("favourites")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq(
+              "listing_id",
+              loadedListing.id
+            )
+            .maybeSingle();
 
           if (favouriteError) {
             console.error(
@@ -118,7 +129,10 @@ function ListingPageContent() {
           setIsFavourite(false);
         }
       } catch (err) {
-        console.error("Listing error:", err);
+        console.error(
+          "Listing error:",
+          err
+        );
 
         setError(
           err instanceof Error
@@ -133,10 +147,6 @@ function ListingPageContent() {
 
     loadListing();
   }, [listingId]);
-
-  /*
-   * ADD / REMOVE FAVOURITE
-   */
 
   async function toggleFavourite() {
     if (!listing || favouriteLoading) {
@@ -157,16 +167,16 @@ function ListingPageContent() {
         return;
       }
 
-      /*
-       * REMOVE FAVOURITE
-       */
-
       if (isFavourite) {
-        const { error: deleteError } = await supabase
-          .from("favourites")
-          .delete()
-          .eq("user_id", user.id)
-          .eq("listing_id", listing.id);
+        const { error: deleteError } =
+          await supabase
+            .from("favourites")
+            .delete()
+            .eq("user_id", user.id)
+            .eq(
+              "listing_id",
+              listing.id
+            );
 
         if (deleteError) {
           console.error(
@@ -185,17 +195,18 @@ function ListingPageContent() {
         return;
       }
 
-      /*
-       * ADD FAVOURITE
-       */
-
-      const { data: existingFavourite, error: checkError } =
-        await supabase
-          .from("favourites")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("listing_id", listing.id)
-          .maybeSingle();
+      const {
+        data: existingFavourite,
+        error: checkError,
+      } = await supabase
+        .from("favourites")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq(
+          "listing_id",
+          listing.id
+        )
+        .maybeSingle();
 
       if (checkError) {
         console.error(
@@ -210,21 +221,18 @@ function ListingPageContent() {
         return;
       }
 
-      /*
-       * Prevent duplicate favourites
-       */
-
       if (existingFavourite) {
         setIsFavourite(true);
         return;
       }
 
-      const { error: insertError } = await supabase
-        .from("favourites")
-        .insert({
-          user_id: user.id,
-          listing_id: listing.id,
-        });
+      const { error: insertError } =
+        await supabase
+          .from("favourites")
+          .insert({
+            user_id: user.id,
+            listing_id: listing.id,
+          });
 
       if (insertError) {
         console.error(
@@ -280,7 +288,9 @@ function ListingPageContent() {
     return result;
   }
 
-  function formatPrice(price: number | string) {
+  function formatPrice(
+    price: number | string
+  ) {
     const value = Number(price);
 
     if (Number.isNaN(value)) {
@@ -298,21 +308,28 @@ function ListingPageContent() {
       return "Unknown";
     }
 
-    return new Date(date).toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    });
+    return new Date(date).toLocaleDateString(
+      "en-GB",
+      {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      }
+    );
   }
 
   function isPromoted(item: Listing) {
-    if (!item.promoted || !item.promoted_until) {
+    if (
+      !item.promoted ||
+      !item.promoted_until
+    ) {
       return false;
     }
 
     return (
-      new Date(item.promoted_until).getTime() >
-      Date.now()
+      new Date(
+        item.promoted_until
+      ).getTime() > Date.now()
     );
   }
 
@@ -320,11 +337,13 @@ function ListingPageContent() {
     return (
       <main className="min-h-screen bg-[#f5f5f5] flex items-center justify-center">
         <div className="text-center">
+
           <div className="mx-auto h-12 w-12 rounded-full border-4 border-gray-200 border-t-black animate-spin" />
 
           <p className="mt-5 text-gray-500 font-semibold">
             Loading listing...
           </p>
+
         </div>
       </main>
     );
@@ -333,27 +352,37 @@ function ListingPageContent() {
   if (error || !listing) {
     return (
       <main className="min-h-screen bg-[#f5f5f5] text-gray-900">
+
         <header className="bg-white border-b border-gray-200">
+
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+
             <Link
               href="/"
               className="text-3xl font-black text-black no-underline"
             >
               Sellio
             </Link>
+
           </div>
+
         </header>
 
         <div className="max-w-3xl mx-auto px-4 py-16">
+
           <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center shadow-sm">
-            <div className="text-6xl">⚠️</div>
+
+            <div className="text-6xl">
+              ⚠️
+            </div>
 
             <h1 className="text-2xl font-black mt-5">
               Listing not found
             </h1>
 
             <p className="text-gray-500 mt-3">
-              {error || "This listing does not exist."}
+              {error ||
+                "This listing does not exist."}
             </p>
 
             <Link
@@ -362,8 +391,11 @@ function ListingPageContent() {
             >
               ← Back to Sellio
             </Link>
+
           </div>
+
         </div>
+
       </main>
     );
   }
@@ -371,7 +403,9 @@ function ListingPageContent() {
   const images = getImages(listing);
 
   const currentImage =
-    images[selectedImage] || images[0] || null;
+    images[selectedImage] ||
+    images[0] ||
+    null;
 
   const promoted = isPromoted(listing);
 
@@ -381,7 +415,9 @@ function ListingPageContent() {
       {/* HEADER */}
 
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
+
         <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
+
           <div className="max-w-7xl mx-auto flex items-center gap-4">
 
             <Link
@@ -418,6 +454,7 @@ function ListingPageContent() {
                 className="hidden sm:flex items-center px-4 py-2.5 rounded-xl hover:bg-gray-100 font-bold text-sm transition no-underline text-black"
               >
                 💬
+
                 <span className="ml-2">
                   Messages
                 </span>
@@ -428,6 +465,7 @@ function ListingPageContent() {
                 className="hidden sm:flex items-center px-4 py-2.5 rounded-xl hover:bg-gray-100 font-bold text-sm transition no-underline text-black"
               >
                 👤
+
                 <span className="ml-2">
                   Profile
                 </span>
@@ -441,8 +479,11 @@ function ListingPageContent() {
               </Link>
 
             </nav>
+
           </div>
+
         </div>
+
       </header>
 
       {/* PAGE */}
@@ -475,15 +516,18 @@ function ListingPageContent() {
           <span className="text-gray-900 font-medium truncate">
             {listing.title}
           </span>
+
         </div>
 
         {/* PROMOTED */}
 
         {promoted && (
           <div className="mb-5">
+
             <span className="inline-flex items-center gap-2 bg-black text-white px-4 py-2 rounded-xl text-sm font-black">
               🚀 PROMOTED
             </span>
+
           </div>
         )}
 
@@ -502,6 +546,7 @@ function ListingPageContent() {
               <div className="relative bg-[#eeeeee]">
 
                 {currentImage ? (
+
                   <div className="w-full h-[380px] sm:h-[520px] lg:h-[600px] flex items-center justify-center bg-[#eeeeee]">
 
                     <img
@@ -511,15 +556,19 @@ function ListingPageContent() {
                     />
 
                   </div>
+
                 ) : (
+
                   <div className="w-full h-[380px] sm:h-[520px] lg:h-[600px] flex items-center justify-center text-8xl bg-gray-100">
                     📷
                   </div>
+
                 )}
 
                 {images.length > 0 && (
                   <div className="absolute bottom-4 right-4 bg-black/75 text-white px-3 py-1.5 rounded-lg text-xs font-bold">
-                    {selectedImage + 1} / {images.length}
+                    {selectedImage + 1} /{" "}
+                    {images.length}
                   </div>
                 )}
 
@@ -543,7 +592,8 @@ function ListingPageContent() {
                       type="button"
                       onClick={() =>
                         setSelectedImage(
-                          selectedImage === images.length - 1
+                          selectedImage ===
+                            images.length - 1
                             ? 0
                             : selectedImage + 1
                         )
@@ -559,32 +609,46 @@ function ListingPageContent() {
 
               {images.length > 1 && (
                 <div className="p-4 border-t border-gray-200">
+
                   <div className="flex gap-3 overflow-x-auto pb-1">
 
-                    {images.map((src, index) => (
-                      <button
-                        key={`${src}-${index}`}
-                        type="button"
-                        onClick={() => setSelectedImage(index)}
-                        className={`relative shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden border-2 transition ${
-                          selectedImage === index
-                            ? "border-black"
-                            : "border-transparent hover:border-gray-400"
-                        }`}
-                      >
-                        <img
-                          src={src}
-                          alt={`${listing.title} ${index + 1}`}
-                          className="w-full h-full object-cover"
-                        />
+                    {images.map(
+                      (src, index) => (
+                        <button
+                          key={`${src}-${index}`}
+                          type="button"
+                          onClick={() =>
+                            setSelectedImage(
+                              index
+                            )
+                          }
+                          className={`relative shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden border-2 transition ${
+                            selectedImage ===
+                            index
+                              ? "border-black"
+                              : "border-transparent hover:border-gray-400"
+                          }`}
+                        >
 
-                        {selectedImage === index && (
-                          <div className="absolute inset-0 bg-black/10" />
-                        )}
-                      </button>
-                    ))}
+                          <img
+                            src={src}
+                            alt={`${listing.title} ${
+                              index + 1
+                            }`}
+                            className="w-full h-full object-cover"
+                          />
+
+                          {selectedImage ===
+                            index && (
+                            <div className="absolute inset-0 bg-black/10" />
+                          )}
+
+                        </button>
+                      )
+                    )}
 
                   </div>
+
                 </div>
               )}
 
@@ -606,6 +670,7 @@ function ListingPageContent() {
                 </p>
 
               </div>
+
             </div>
 
             {/* INFORMATION */}
@@ -663,6 +728,7 @@ function ListingPageContent() {
                 </div>
 
               </div>
+
             </div>
 
           </div>
@@ -725,16 +791,62 @@ function ListingPageContent() {
 
                 </div>
 
+                {/* PHONE */}
+
+                {listing.phone ? (
+                  <div className="mt-5">
+
+                    <p className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+                      Phone
+                    </p>
+
+                    <a
+                      href={`tel:${listing.phone}`}
+                      className="mt-2 flex items-center gap-3 w-full bg-gray-50 border border-gray-200 hover:border-black rounded-xl px-4 py-3 transition no-underline"
+                    >
+                      <span className="text-xl">
+                        📞
+                      </span>
+
+                      <span className="font-black text-black text-lg">
+                        {listing.phone}
+                      </span>
+                    </a>
+
+                  </div>
+                ) : (
+                  <div className="mt-5 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+
+                    <p className="text-sm text-gray-500">
+                      📞 No phone number provided
+                    </p>
+
+                  </div>
+                )}
+
+                {/* CALL */}
+
+                {listing.phone && (
+                  <a
+                    href={`tel:${listing.phone}`}
+                    className="block w-full mt-3 bg-black hover:bg-gray-800 text-white text-center py-4 rounded-xl font-black transition no-underline"
+                  >
+                    📞 Call Seller
+                  </a>
+                )}
+
+                {/* MESSAGE */}
+
                 <Link
                   href={`/messages?listing=${encodeURIComponent(
                     String(listing.id)
                   )}`}
-                  className="block w-full mt-6 bg-black hover:bg-gray-800 text-white text-center py-4 rounded-xl font-black transition no-underline"
+                  className="block w-full mt-3 bg-white hover:bg-gray-100 text-black border-2 border-gray-200 hover:border-black text-center py-4 rounded-xl font-black transition no-underline"
                 >
                   💬 Contact Seller
                 </Link>
 
-                {/* FAVOURITE BUTTON */}
+                {/* FAVOURITE */}
 
                 <button
                   type="button"
@@ -779,15 +891,20 @@ function ListingPageContent() {
 
                 <div className="mt-4 space-y-3 text-sm text-gray-600">
 
-                  <p>✓ Meet in a safe public place</p>
+                  <p>
+                    ✓ Meet in a safe public place
+                  </p>
 
-                  <p>✓ Check the item before paying</p>
+                  <p>
+                    ✓ Check the item before paying
+                  </p>
 
                   <p>
                     ✓ Never send money before checking the item
                   </p>
 
                 </div>
+
               </div>
 
               {/* SELL */}
@@ -800,9 +917,11 @@ function ListingPageContent() {
               </Link>
 
             </div>
+
           </aside>
 
         </div>
+
       </div>
 
       {/* FOOTER */}
@@ -874,6 +993,7 @@ function ListingPageContent() {
           </div>
 
         </div>
+
       </footer>
 
     </main>
@@ -885,13 +1005,17 @@ export default function ListingPage() {
     <Suspense
       fallback={
         <main className="min-h-screen bg-[#f5f5f5] flex items-center justify-center">
+
           <div className="text-center">
+
             <div className="mx-auto h-12 w-12 rounded-full border-4 border-gray-200 border-t-black animate-spin" />
 
             <p className="mt-5 text-gray-500 font-semibold">
               Loading listing...
             </p>
+
           </div>
+
         </main>
       }
     >
