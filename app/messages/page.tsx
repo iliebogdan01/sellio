@@ -1,15 +1,15 @@
 "use client";
 
 import {
+  Suspense,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type FormEvent,
 } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
-import MessageBadge from "@/components/MessageBadge";
+import { useSearchParams } from "next/navigation";
+import { createClient } from "../../lib/supabase/client";
 
 type Message = {
   id: number;
@@ -21,11 +21,17 @@ type Message = {
   is_read: boolean;
 };
 
+type Profile = {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+};
+
 type Listing = {
   id: number;
   title: string;
+  price: number | string | null;
   image: string | null;
-  price: number | string;
 };
 
 type Conversation = {
@@ -33,192 +39,165 @@ type Conversation = {
   listingId: number;
   otherUserId: string;
   listing: Listing | null;
-  messages: Message[];
+  otherProfile: Profile | null;
   lastMessage: Message;
-  unreadCount: number;
 };
 
-const categoryLinks = [
-  { name: "Home", icon: "🏠", href: "/" },
-  { name: "Cars", icon: "🚗", href: "/" },
-  { name: "Electronics", icon: "📱", href: "/" },
-  { name: "Fashion", icon: "👕", href: "/" },
-  { name: "Property", icon: "🏠", href: "/" },
-  { name: "Gaming", icon: "🎮", href: "/" },
-];
+function MessagesContent() {
+  const supabase = useMemo(() => createClient(), []);
+  const searchParams = useSearchParams();
 
-export default function MessagesPage() {
-  const supabase = createClient();
+  const listingFromUrl = searchParams.get("listing");
 
   const [userId, setUserId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [profiles, setProfiles] = useState<Record<string, Profile>>({});
+  const [listings, setListings] = useState<Record<number, Listing>>({});
+
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [text, setText] = useState("");
+
+  const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
 
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-
-  async function loadMessages(currentUserId?: string) {
-    try {
-      const id = currentUserId || userId;
-
-      if (!id) return;
-
-      const { data, error: messagesError } = await supabase
-        .from("messages")
-        .select(
-          `
-            id,
-            listing_id,
-            sender_id,
-            receiver_id,
-            text,
-            created_at,
-            is_read
-          `
-        )
-        .or(`sender_id.eq.${id},receiver_id.eq.${id}`)
-        .order("created_at", {
-          ascending: true,
-        });
-
-      if (messagesError) {
-        console.error(messagesError);
-        setError(messagesError.message);
-        return;
-      }
-
-      setMessages((data || []) as Message[]);
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not load messages."
-      );
-    }
-  }
-
-  async function loadListings() {
-    try {
-      const { data, error: listingsError } = await supabase
-        .from("listings")
-        .select("id, title, image, price");
-
-      if (listingsError) {
-        console.error(listingsError);
-        return;
-      }
-
-      setListings((data || []) as Listing[]);
-    } catch (err) {
-      console.error(err);
-    }
-  }
 
   useEffect(() => {
     let mounted = true;
 
-    async function init() {
-      setLoading(true);
-      setError("");
-
+    async function loadUser() {
       const {
         data: { user },
-        error: userError,
       } = await supabase.auth.getUser();
 
-      if (!mounted) return;
-
-      if (userError) {
-        setError(userError.message);
-        setLoading(false);
+      if (!mounted) {
         return;
       }
 
       if (!user) {
-        setError("You must be logged in to view your messages.");
+        setUserId(null);
         setLoading(false);
         return;
       }
 
       setUserId(user.id);
-
-      await Promise.all([
-        loadMessages(user.id),
-        loadListings(),
-      ]);
-
-      if (mounted) {
-        setLoading(false);
-      }
     }
 
-    init();
+    loadUser();
 
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      return;
+    }
 
-    const channel = supabase
-      .channel(`messages-page-${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-        },
-        (payload) => {
-          const newMessage = payload.new as Message;
+    let mounted = true;
 
-          if (
-            newMessage.sender_id === userId ||
-            newMessage.receiver_id === userId
-          ) {
-            setMessages((current) => {
-              const exists = current.some(
-                (message) => message.id === newMessage.id
-              );
+    async function loadMessages() {
+      setError("");
 
-              if (exists) {
-                return current;
-              }
+      const { data, error: messagesError } = await supabase
+        .from("messages")
+        .select(
+          "id, listing_id, sender_id, receiver_id, text, created_at, is_read"
+        )
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+        .order("created_at", {
+          ascending: true,
+        });
 
-              return [...current, newMessage].sort(
-                (a, b) =>
-                  new Date(a.created_at).getTime() -
-                  new Date(b.created_at).getTime()
-              );
-            });
+      if (!mounted) {
+        return;
+      }
+
+      if (messagesError) {
+        console.error(messagesError);
+        setError(messagesError.message);
+        setLoading(false);
+        return;
+      }
+
+      const loadedMessages = (data ?? []) as Message[];
+
+      setMessages(loadedMessages);
+
+      const userIds = Array.from(
+        new Set(
+          loadedMessages.flatMap((message) => [
+            message.sender_id,
+            message.receiver_id,
+          ])
+        )
+      );
+
+      const listingIds = Array.from(
+        new Set(
+          loadedMessages
+            .map((message) => message.listing_id)
+            .filter((id): id is number => Boolean(id))
+        )
+      );
+
+      if (userIds.length > 0) {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url")
+          .in("id", userIds);
+
+        if (profileData) {
+          const profileMap: Record<string, Profile> = {};
+
+          for (const profile of profileData as Profile[]) {
+            profileMap[profile.id] = profile;
           }
+
+          setProfiles(profileMap);
         }
-      )
-      .subscribe();
+      }
+
+      if (listingIds.length > 0) {
+        const { data: listingData } = await supabase
+          .from("listings")
+          .select("id, title, price, image")
+          .in("id", listingIds);
+
+        if (listingData) {
+          const listingMap: Record<number, Listing> = {};
+
+          for (const listing of listingData as Listing[]) {
+            listingMap[listing.id] = listing;
+          }
+
+          setListings(listingMap);
+        }
+      }
+
+      setLoading(false);
+    }
+
+    loadMessages();
 
     const interval = window.setInterval(() => {
-      loadMessages(userId);
+      loadMessages();
     }, 5000);
 
     return () => {
+      mounted = false;
       window.clearInterval(interval);
-      supabase.removeChannel(channel);
     };
-  }, [userId]);
+  }, [supabase, userId]);
 
-  const conversations = useMemo<Conversation[]>(() => {
-    if (!userId) return [];
+  const conversations = useMemo(() => {
+    if (!userId) {
+      return [];
+    }
 
-    const grouped = new Map<string, Message[]>();
+    const map = new Map<string, Conversation>();
 
     for (const message of messages) {
       const otherUserId =
@@ -228,135 +207,132 @@ export default function MessagesPage() {
 
       const key = `${message.listing_id}-${otherUserId}`;
 
-      if (!grouped.has(key)) {
-        grouped.set(key, []);
+      const existing = map.get(key);
+
+      if (!existing) {
+        map.set(key, {
+          key,
+          listingId: message.listing_id,
+          otherUserId,
+          listing: listings[message.listing_id] ?? null,
+          otherProfile: profiles[otherUserId] ?? null,
+          lastMessage: message,
+        });
+      } else {
+        existing.lastMessage = message;
       }
-
-      grouped.get(key)!.push(message);
     }
 
-    const result: Conversation[] = [];
-
-    for (const [key, conversationMessages] of grouped.entries()) {
-      const firstMessage = conversationMessages[0];
-
-      if (!firstMessage) continue;
-
-      const otherUserId =
-        firstMessage.sender_id === userId
-          ? firstMessage.receiver_id
-          : firstMessage.sender_id;
-
-      const lastMessage =
-        conversationMessages[conversationMessages.length - 1];
-
-      const unreadCount = conversationMessages.filter(
-        (message) =>
-          message.receiver_id === userId &&
-          !message.is_read
-      ).length;
-
-      const listing =
-        listings.find(
-          (item) => item.id === firstMessage.listing_id
-        ) || null;
-
-      result.push({
-        key,
-        listingId: firstMessage.listing_id,
-        otherUserId,
-        listing,
-        messages: conversationMessages,
-        lastMessage,
-        unreadCount,
-      });
-    }
-
-    result.sort(
+    return Array.from(map.values()).sort(
       (a, b) =>
         new Date(b.lastMessage.created_at).getTime() -
         new Date(a.lastMessage.created_at).getTime()
     );
-
-    return result;
-  }, [messages, listings, userId]);
+  }, [messages, profiles, listings, userId]);
 
   useEffect(() => {
-    if (!selectedKey && conversations.length > 0) {
-      setSelectedKey(conversations[0].key);
+    if (conversations.length === 0) {
+      setSelectedKey(null);
+      return;
     }
 
-    if (
-      selectedKey &&
-      conversations.length > 0 &&
-      !conversations.some(
-        (conversation) => conversation.key === selectedKey
-      )
-    ) {
-      setSelectedKey(conversations[0].key);
+    if (listingFromUrl) {
+      const match = conversations.find(
+        (conversation) =>
+          String(conversation.listingId) === listingFromUrl
+      );
+
+      if (match) {
+        setSelectedKey(match.key);
+        return;
+      }
     }
+
+    setSelectedKey((current) => {
+      if (
+        current &&
+        conversations.some(
+          (conversation) => conversation.key === current
+        )
+      ) {
+        return current;
+      }
+
+      return conversations[0].key;
+    });
+  }, [conversations, listingFromUrl]);
+
+  const selectedConversation = useMemo(() => {
+    return (
+      conversations.find(
+        (conversation) => conversation.key === selectedKey
+      ) ?? null
+    );
   }, [conversations, selectedKey]);
 
-  const selectedConversation =
-    conversations.find(
-      (conversation) => conversation.key === selectedKey
-    ) || null;
+  const selectedMessages = useMemo(() => {
+    if (!selectedConversation || !userId) {
+      return [];
+    }
 
-  /*
-   * AUTO SCROLL
-   */
+    return messages.filter((message) => {
+      const sameListing =
+        message.listing_id === selectedConversation.listingId;
+
+      const samePeople =
+        (message.sender_id === userId &&
+          message.receiver_id === selectedConversation.otherUserId) ||
+        (message.receiver_id === userId &&
+          message.sender_id === selectedConversation.otherUserId);
+
+      return sameListing && samePeople;
+    });
+  }, [messages, selectedConversation, userId]);
+
   useEffect(() => {
-    if (!selectedConversation) return;
+    const container = messagesContainerRef.current;
 
-    const timeout = window.setTimeout(() => {
-      const container = messagesContainerRef.current;
+    if (!container) {
+      return;
+    }
 
-      if (container) {
-        container.scrollTo({
-          top: container.scrollHeight,
-          behavior: "smooth",
-        });
-      }
-    }, 100);
+    const timer = window.setTimeout(() => {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+    }, 50);
 
     return () => {
-      window.clearTimeout(timeout);
+      window.clearTimeout(timer);
     };
-  }, [
-    selectedKey,
-    selectedConversation?.messages.length,
-  ]);
+  }, [selectedMessages.length, selectedKey]);
 
-  /*
-   * MARK AS READ
-   */
   useEffect(() => {
-    if (!userId || !selectedConversation) return;
+    if (!userId || selectedMessages.length === 0) {
+      return;
+    }
 
-    const unreadIds = selectedConversation.messages
+    const unreadIds = selectedMessages
       .filter(
         (message) =>
-          message.receiver_id === userId &&
-          !message.is_read
+          message.receiver_id === userId && !message.is_read
       )
       .map((message) => message.id);
 
-    if (unreadIds.length === 0) return;
+    if (unreadIds.length === 0) {
+      return;
+    }
 
     async function markAsRead() {
       const { error: updateError } = await supabase
         .from("messages")
-        .update({
-          is_read: true,
-        })
+        .update({ is_read: true })
         .in("id", unreadIds)
         .eq("receiver_id", userId);
 
       if (updateError) {
-        console.error(
-          "Could not mark messages as read:",
-          updateError
-        );
+        console.error(updateError);
         return;
       }
 
@@ -373,14 +349,16 @@ export default function MessagesPage() {
     }
 
     markAsRead();
-  }, [selectedKey, selectedConversation, userId]);
+  }, [selectedMessages, supabase, userId]);
 
-  async function sendMessage(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function sendMessage() {
+    if (!userId || !selectedConversation) {
+      return;
+    }
 
     const cleanText = text.trim();
 
-    if (!cleanText || !userId || !selectedConversation) {
+    if (!cleanText) {
       return;
     }
 
@@ -388,53 +366,26 @@ export default function MessagesPage() {
     setError("");
 
     try {
-      const receiverId =
-        selectedConversation.otherUserId;
-
-      const listingId =
-        selectedConversation.listingId;
-
-      const { data, error: insertError } =
-        await supabase
-          .from("messages")
-          .insert({
-            listing_id: listingId,
-            sender_id: userId,
-            receiver_id: receiverId,
-            text: cleanText,
-            is_read: false,
-          })
-          .select(
-            `
-              id,
-              listing_id,
-              sender_id,
-              receiver_id,
-              text,
-              created_at,
-              is_read
-            `
-          )
-          .single();
+      const { data, error: insertError } = await supabase
+        .from("messages")
+        .insert({
+          listing_id: selectedConversation.listingId,
+          sender_id: userId,
+          receiver_id: selectedConversation.otherUserId,
+          text: cleanText,
+          is_read: false,
+        })
+        .select(
+          "id, listing_id, sender_id, receiver_id, text, created_at, is_read"
+        )
+        .single();
 
       if (insertError) {
-        console.error(insertError);
-        setError(insertError.message);
-        return;
+        throw insertError;
       }
 
       if (data) {
-        setMessages((current) => {
-          const exists = current.some(
-            (message) => message.id === data.id
-          );
-
-          if (exists) {
-            return current;
-          }
-
-          return [...current, data as Message];
-        });
+        setMessages((current) => [...current, data as Message]);
       }
 
       setText("");
@@ -452,742 +403,417 @@ export default function MessagesPage() {
   }
 
   function formatMessageTime(date: string) {
-    return new Date(date).toLocaleTimeString(
-      "en-GB",
-      {
-        hour: "2-digit",
-        minute: "2-digit",
-      }
-    );
+    return new Date(date).toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   }
 
   function formatConversationDate(date: string) {
-    return new Date(date).toLocaleDateString(
-      "en-GB",
-      {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      }
-    );
+    return new Date(date).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "2-digit",
+    });
   }
 
-  return (
-    <main className="min-h-screen bg-[#111111] text-white flex flex-col">
-
-      {/* HEADER */}
-      <header className="bg-[#080808] border-b border-[#292929] sticky top-0 z-50">
-        <div className="w-full px-3 sm:px-5 lg:px-7 py-3">
-          <div className="flex items-center gap-3">
-
+  if (!userId && !loading) {
+    return (
+      <main className="min-h-screen bg-[#111111] text-white">
+        <header className="border-b border-[#303030] bg-[#181818]">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
             <Link
               href="/"
-              className="shrink-0 text-2xl sm:text-3xl font-black tracking-tight text-white hover:opacity-80 transition"
+              className="text-2xl font-black tracking-tight"
             >
               Sellio
             </Link>
 
-            <div className="flex-1 flex justify-center">
-              <Link
-                href="/"
-                className="hidden sm:flex w-full max-w-xl bg-[#151515] border border-[#333333] rounded-xl px-4 py-2.5 items-center gap-3 hover:border-[#555555] transition"
-              >
-                <span className="text-xl">🔎</span>
+            <Link
+              href="/"
+              className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-black transition hover:bg-gray-200"
+            >
+              Home
+            </Link>
+          </div>
+        </header>
 
-                <span className="text-sm text-[#888888]">
-                  What are you looking for?
-                </span>
-              </Link>
-            </div>
+        <section className="mx-auto flex min-h-[70vh] max-w-3xl items-center justify-center px-4">
+          <div className="w-full rounded-2xl border border-[#303030] bg-[#181818] p-8 text-center">
+            <div className="mb-4 text-5xl">💬</div>
 
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <h1 className="text-2xl font-black">
+              Sign in to view your messages
+            </h1>
 
-              <Link
-                href="/favourites"
-                title="Favourites"
-                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-lg hover:bg-[#202020] text-lg transition"
-              >
-                ❤️
-              </Link>
+            <p className="mt-2 text-sm text-[#999999]">
+              Log in to contact sellers and manage your conversations.
+            </p>
 
-              <MessageBadge />
+            <Link
+              href="/login"
+              className="mt-6 inline-flex rounded-xl bg-white px-6 py-3 font-bold text-black transition hover:bg-gray-200"
+            >
+              Sign in
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
-              <Link
-                href="/profile"
-                title="Profile"
-                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-lg hover:bg-[#202020] text-lg transition"
-              >
-                👤
-              </Link>
+  return (
+    <main className="min-h-screen bg-[#111111] text-white">
+      <header className="sticky top-0 z-30 border-b border-[#303030] bg-[#181818]">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4">
+          <Link
+            href="/"
+            className="text-2xl font-black tracking-tight transition hover:opacity-80"
+          >
+            Sellio
+          </Link>
 
-              <Link
-                href="/sell"
-                className="bg-white hover:bg-gray-200 text-black px-3 sm:px-5 py-2.5 rounded-xl font-black text-sm transition"
-              >
-                + Sell
-              </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/"
+              className="rounded-xl px-3 py-2 text-sm font-bold text-[#cccccc] transition hover:bg-[#252525] hover:text-white"
+            >
+              Home
+            </Link>
 
-            </div>
+            <Link
+              href="/sell"
+              className="rounded-xl bg-white px-4 py-2 text-sm font-black text-black transition hover:bg-gray-200"
+            >
+              Sell
+            </Link>
           </div>
         </div>
       </header>
 
-      {/* CATEGORY BAR */}
-      <section className="bg-[#0d0d0d] border-b border-[#292929]">
-        <div className="w-full px-3 sm:px-5 lg:px-7 py-3">
-          <div className="flex gap-2 overflow-x-auto">
+      <section className="mx-auto max-w-7xl px-4 py-5 sm:py-8">
+        <div className="mb-5">
+          <p className="text-sm font-bold uppercase tracking-wider text-[#777777]">
+            Sellio
+          </p>
 
-            {categoryLinks.map((category) => (
-              <Link
-                key={category.name}
-                href={category.href}
-                className={
-                  category.name === "Home"
-                    ? "whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-black text-sm font-black"
-                    : "whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg bg-[#202020] hover:bg-[#292929] text-[#dddddd] text-sm font-semibold transition"
-                }
-              >
-                {category.icon} {category.name}
-              </Link>
-            ))}
+          <h1 className="mt-1 text-3xl font-black sm:text-4xl">
+            Messages
+          </h1>
 
-          </div>
+          <p className="mt-2 text-sm text-[#999999]">
+            Chat with buyers and sellers about listings.
+          </p>
         </div>
-      </section>
 
-      {/* MAIN */}
-      <section className="flex-1 w-full px-3 sm:px-5 lg:px-7 py-4 sm:py-6">
-
-        <div className="w-full max-w-7xl mx-auto">
-
-          {/* TITLE */}
-          <div className="mb-4 sm:mb-5">
-
-            <p className="text-xs uppercase tracking-[0.25em] font-bold text-[#777777]">
-              Sellio Account
-            </p>
-
-            <h1 className="text-3xl sm:text-4xl font-black mt-2">
-              Messages
-            </h1>
-
-            <p className="text-[#888888] mt-2">
-              Chat with buyers and sellers about your listings.
-            </p>
-
+        {error && (
+          <div className="mb-4 rounded-xl border border-red-900 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+            {error}
           </div>
+        )}
 
-          {/* ERROR */}
-          {error && (
-            <div className="mb-5 bg-[#241414] border border-[#5a2929] text-[#ffb5b5] rounded-xl px-5 py-4">
-              <p className="font-black">
-                Something went wrong
-              </p>
+        {loading ? (
+          <div className="rounded-2xl border border-[#303030] bg-[#181818] p-8 text-center text-[#999999]">
+            Loading messages...
+          </div>
+        ) : conversations.length === 0 ? (
+          <div className="rounded-2xl border border-[#303030] bg-[#181818] p-10 text-center">
+            <div className="text-5xl">💬</div>
 
-              <p className="text-sm mt-1">
-                {error}
-              </p>
-            </div>
-          )}
+            <h2 className="mt-4 text-2xl font-black">
+              No conversations yet
+            </h2>
 
-          {/* LOADING */}
-          {loading ? (
+            <p className="mx-auto mt-2 max-w-md text-sm text-[#888888]">
+              When you contact a seller or someone contacts you,
+              your conversations will appear here.
+            </p>
 
-            <div className="bg-[#181818] border border-[#303030] rounded-2xl p-16 text-center">
-
-              <div className="w-11 h-11 border-4 border-[#333333] border-t-white rounded-full animate-spin mx-auto" />
-
-              <p className="mt-4 text-[#888888]">
-                Loading messages...
-              </p>
-
-            </div>
-
-          ) : (
-
-            /*
-             * IMPORTANT:
-             * Pe mobil chatul are o înălțime limitată
-             * bazată pe viewport.
-             *
-             * 100dvh = înălțimea reală disponibilă pe telefon.
-             */
-            <div
-              className="
-                grid
-                grid-cols-1
-                lg:grid-cols-[320px_minmax(0,1fr)]
-                gap-4
-                lg:h-[calc(100vh-250px)]
-                lg:min-h-[600px]
-              "
+            <Link
+              href="/"
+              className="mt-6 inline-flex rounded-xl bg-white px-6 py-3 font-bold text-black transition hover:bg-gray-200"
             >
+              Browse listings
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)] lg:h-[calc(100vh-250px)] lg:min-h-[600px]">
+            <aside className="flex h-[260px] flex-col overflow-hidden rounded-2xl border border-[#303030] bg-[#181818] lg:h-auto lg:min-h-0">
+              <div className="shrink-0 border-b border-[#303030] px-5 py-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-black">
+                    Conversations
+                  </h2>
 
-              {/* CONVERSATIONS */}
-              <aside
-                className="
-                  bg-[#181818]
-                  border border-[#303030]
-                  rounded-2xl
-                  overflow-hidden
-                  flex
-                  flex-col
-                  h-[260px]
-                  lg:h-auto
-                  lg:min-h-0
-                "
-              >
-
-                <div className="px-5 py-4 border-b border-[#303030] shrink-0">
-
-                  <div className="flex items-center justify-between">
-
-                    <h2 className="font-black text-lg">
-                      Conversations
-                    </h2>
-
-                    <span className="text-xs text-[#777777]">
-                      {conversations.length}
-                    </span>
-
-                  </div>
-
+                  <span className="text-xs text-[#777777]">
+                    {conversations.length}
+                  </span>
                 </div>
+              </div>
 
-                <div
-                  className="
-                    flex-1
-                    min-h-0
-                    overflow-y-auto
-                    overscroll-contain
-                    [scrollbar-width:thin]
-                  "
-                >
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
+                {conversations.map((conversation) => {
+                  const active =
+                    conversation.key === selectedKey;
 
-                  {conversations.length === 0 ? (
+                  const otherName =
+                    conversation.otherProfile?.full_name ||
+                    "Sellio User";
 
-                    <div className="p-6 text-center">
-
-                      <div className="text-5xl">
-                        💬
-                      </div>
-
-                      <p className="font-black mt-4">
-                        No conversations
-                      </p>
-
-                      <p className="text-sm text-[#777777] mt-2">
-                        Your conversations will appear here.
-                      </p>
-
-                    </div>
-
-                  ) : (
-
-                    <div className="p-2">
-
-                      {conversations.map((conversation) => {
-
-                        const active =
-                          conversation.key === selectedKey;
-
-                        const listingTitle =
-                          conversation.listing?.title ||
-                          "Listing";
-
-                        return (
-                          <button
-                            key={conversation.key}
-                            type="button"
-                            onClick={() =>
-                              setSelectedKey(
-                                conversation.key
-                              )
-                            }
-                            className={`w-full text-left rounded-xl p-3 mb-1 transition ${
-                              active
-                                ? "bg-white text-black"
-                                : "hover:bg-[#222222] text-white"
-                            }`}
-                          >
-
-                            <div className="flex items-start gap-3">
-
-                              {conversation.listing?.image ? (
-
-                                <img
-                                  src={
-                                    conversation.listing.image
-                                  }
-                                  alt=""
-                                  className="w-12 h-12 rounded-xl object-cover shrink-0"
-                                />
-
-                              ) : (
-
-                                <div
-                                  className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0 ${
-                                    active
-                                      ? "bg-black/10"
-                                      : "bg-[#292929]"
-                                  }`}
-                                >
-                                  📦
-                                </div>
-
-                              )}
-
-                              <div className="min-w-0 flex-1">
-
-                                <div className="flex items-center justify-between gap-2">
-
-                                  <p className="font-black truncate">
-                                    {listingTitle}
-                                  </p>
-
-                                  {conversation.unreadCount >
-                                    0 && (
-                                    <span
-                                      className={`min-w-5 h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
-                                        active
-                                          ? "bg-black text-white"
-                                          : "bg-red-600 text-white"
-                                      }`}
-                                    >
-                                      {conversation.unreadCount >
-                                      99
-                                        ? "99+"
-                                        : conversation.unreadCount}
-                                    </span>
-                                  )}
-
-                                </div>
-
-                                <p
-                                  className={`text-xs mt-1 truncate ${
-                                    active
-                                      ? "text-gray-600"
-                                      : "text-[#777777]"
-                                  }`}
-                                >
-                                  {conversation.lastMessage.text}
-                                </p>
-
-                                <p
-                                  className={`text-[10px] mt-1 ${
-                                    active
-                                      ? "text-gray-500"
-                                      : "text-[#555555]"
-                                  }`}
-                                >
-                                  {formatConversationDate(
-                                    conversation.lastMessage
-                                      .created_at
-                                  )}
-                                </p>
-
-                              </div>
-
-                            </div>
-
-                          </button>
-                        );
-                      })}
-
-                    </div>
-
-                  )}
-
-                </div>
-
-              </aside>
-
-              {/* CHAT */}
-              <section
-                className="
-                  bg-[#181818]
-                  border border-[#303030]
-                  rounded-2xl
-                  overflow-hidden
-                  flex
-                  flex-col
-                  min-h-0
-                  h-[calc(100dvh-390px)]
-                  min-h-[420px]
-                  lg:h-auto
-                  lg:min-h-0
-                "
-              >
-
-                {!selectedConversation ? (
-
-                  <div className="flex-1 flex items-center justify-center text-center p-8">
-
-                    <div>
-
-                      <div className="text-6xl">
-                        💬
-                      </div>
-
-                      <h2 className="text-2xl font-black mt-5">
-                        Select a conversation
-                      </h2>
-
-                      <p className="text-[#777777] mt-2">
-                        Choose a conversation from the left.
-                      </p>
-
-                    </div>
-
-                  </div>
-
-                ) : (
-
-                  <>
-
-                    {/* CHAT HEADER */}
-                    <div className="px-4 sm:px-6 py-4 border-b border-[#303030] shrink-0">
-
-                      <div className="flex items-center justify-between gap-4">
-
-                        <div className="min-w-0">
-
-                          <p className="text-xs uppercase tracking-[0.18em] text-[#777777] font-bold">
-                            Conversation
-                          </p>
-
-                          <h2 className="font-black text-lg truncate mt-1">
-                            {selectedConversation.listing
-                              ?.title || "Listing"}
-                          </h2>
-
-                        </div>
-
-                        <Link
-                          href={`/listing?id=${encodeURIComponent(
-                            String(
-                              selectedConversation.listingId
-                            )
-                          )}`}
-                          className="shrink-0 bg-white hover:bg-gray-200 text-black px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition"
-                        >
-                          View Listing
-                        </Link>
-
-                      </div>
-
-                    </div>
-
-                    {/* MESSAGES */}
-                    <div
-                      ref={messagesContainerRef}
-                      className="
-                        flex-1
-                        min-h-0
-                        overflow-y-auto
-                        overscroll-contain
-                        touch-pan-y
-                        px-4
-                        sm:px-6
-                        py-5
-                        [scrollbar-width:thin]
-                      "
+                  return (
+                    <button
+                      key={conversation.key}
+                      type="button"
+                      onClick={() =>
+                        setSelectedKey(conversation.key)
+                      }
+                      className={`w-full border-b border-[#292929] px-4 py-4 text-left transition ${
+                        active
+                          ? "bg-[#252525]"
+                          : "hover:bg-[#202020]"
+                      }`}
                     >
-
-                      <div className="space-y-3">
-
-                        {selectedConversation.messages.map(
-                          (message) => {
-
-                            const mine =
-                              message.sender_id ===
-                              userId;
-
-                            return (
-                              <div
-                                key={message.id}
-                                className={`flex ${
-                                  mine
-                                    ? "justify-end"
-                                    : "justify-start"
-                                }`}
-                              >
-
-                                <div
-                                  className={`max-w-[85%] sm:max-w-[70%] ${
-                                    mine
-                                      ? "items-end"
-                                      : "items-start"
-                                  } flex flex-col`}
-                                >
-
-                                  <div
-                                    className={`px-4 py-3 rounded-2xl break-words whitespace-pre-wrap ${
-                                      mine
-                                        ? "bg-white text-black rounded-br-md"
-                                        : "bg-[#292929] text-white rounded-bl-md"
-                                    }`}
-                                  >
-                                    {message.text}
-                                  </div>
-
-                                  <div
-                                    className={`text-[10px] text-[#666666] mt-1 px-1 ${
-                                      mine
-                                        ? "text-right"
-                                        : "text-left"
-                                    }`}
-                                  >
-                                    {formatMessageTime(
-                                      message.created_at
-                                    )}
-                                  </div>
-
-                                </div>
-
-                              </div>
-                            );
-                          }
+                      <div className="flex gap-3">
+                        {conversation.otherProfile?.avatar_url ? (
+                          <img
+                            src={
+                              conversation.otherProfile.avatar_url
+                            }
+                            alt={otherName}
+                            className="h-11 w-11 shrink-0 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#303030] text-lg font-black">
+                            {otherName
+                              .charAt(0)
+                              .toUpperCase()}
+                          </div>
                         )}
 
-                        <div
-                          ref={messagesEndRef}
-                          className="h-px"
-                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="truncate text-sm font-bold">
+                              {otherName}
+                            </p>
 
+                            <span className="shrink-0 text-[10px] text-[#777777]">
+                              {formatConversationDate(
+                                conversation.lastMessage.created_at
+                              )}
+                            </span>
+                          </div>
+
+                          <p className="mt-1 truncate text-xs text-[#777777]">
+                            {conversation.listing?.title ||
+                              `Listing #${conversation.listingId}`}
+                          </p>
+
+                          <p className="mt-1 truncate text-xs text-[#999999]">
+                            {conversation.lastMessage.text}
+                          </p>
+                        </div>
                       </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </aside>
 
-                    </div>
-
-                    {/* INPUT */}
-                    <form
-                      onSubmit={sendMessage}
-                      className="
-                        border-t
-                        border-[#303030]
-                        p-3
-                        sm:p-4
-                        shrink-0
-                        bg-[#151515]
-                      "
-                    >
-
-                      <div className="flex items-end gap-2">
-
-                        <textarea
-                          value={text}
-                          onChange={(event) =>
-                            setText(event.target.value)
+            <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[#303030] bg-[#181818] h-[calc(100dvh-390px)] lg:h-auto">
+              {selectedConversation ? (
+                <>
+                  <div className="shrink-0 border-b border-[#303030] px-4 py-4 sm:px-5">
+                    <div className="flex items-center gap-3">
+                      {selectedConversation.otherProfile?.avatar_url ? (
+                        <img
+                          src={
+                            selectedConversation.otherProfile
+                              .avatar_url
                           }
-                          onKeyDown={(event) => {
-                            if (
-                              event.key === "Enter" &&
-                              !event.shiftKey
-                            ) {
-                              event.preventDefault();
-
-                              if (!sending) {
-                                event.currentTarget.form?.requestSubmit();
-                              }
-                            }
-                          }}
-                          rows={1}
-                          placeholder="Write a message..."
-                          className="
-                            flex-1
-                            resize-none
-                            bg-[#202020]
-                            border
-                            border-[#3a3a3a]
-                            focus:border-[#666666]
-                            outline-none
-                            text-white
-                            placeholder:text-[#666666]
-                            rounded-xl
-                            px-4
-                            py-3
-                            text-sm
-                            min-h-[46px]
-                            max-h-32
-                            overflow-y-auto
-                          "
+                          alt={
+                            selectedConversation.otherProfile
+                              .full_name || "Sellio User"
+                          }
+                          className="h-10 w-10 rounded-full object-cover"
                         />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#303030] font-black">
+                          {(
+                            selectedConversation.otherProfile
+                              ?.full_name || "S"
+                          )
+                            .charAt(0)
+                            .toUpperCase()}
+                        </div>
+                      )}
 
-                        <button
-                          type="submit"
-                          disabled={
-                            sending ||
-                            !text.trim()
-                          }
-                          className="
-                            bg-white
-                            hover:bg-gray-200
-                            disabled:bg-[#333333]
-                            disabled:text-[#777777]
-                            text-black
-                            disabled:cursor-not-allowed
-                            px-4
-                            sm:px-5
-                            py-3
-                            rounded-xl
-                            font-black
-                            text-sm
-                            transition
-                            shrink-0
-                          "
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-black">
+                          {selectedConversation.otherProfile
+                            ?.full_name || "Sellio User"}
+                        </p>
+
+                        <Link
+                          href={`/listing?id=${selectedConversation.listingId}`}
+                          className="mt-1 block truncate text-xs text-[#999999] transition hover:text-white"
                         >
-                          {sending
-                            ? "..."
-                            : "Send"}
-                        </button>
-
+                          {selectedConversation.listing?.title ||
+                            `Listing #${selectedConversation.listingId}`}
+                        </Link>
                       </div>
 
-                      <p className="text-[10px] text-[#555555] mt-2 px-1">
-                        Press Enter to send • Shift + Enter for a new line
-                      </p>
+                      <Link
+                        href={`/listing?id=${selectedConversation.listingId}`}
+                        className="hidden rounded-lg border border-[#404040] px-3 py-2 text-xs font-bold transition hover:bg-[#252525] sm:block"
+                      >
+                        View listing
+                      </Link>
+                    </div>
+                  </div>
 
+                  <div
+                    ref={messagesContainerRef}
+                    className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 [scrollbar-width:thin] touch-pan-y sm:px-6"
+                  >
+                    <div className="mx-auto flex max-w-3xl flex-col gap-3">
+                      {selectedMessages.map((message) => {
+                        const mine =
+                          message.sender_id === userId;
+
+                        return (
+                          <div
+                            key={message.id}
+                            className={`flex ${
+                              mine
+                                ? "justify-end"
+                                : "justify-start"
+                            }`}
+                          >
+                            <div
+                              className={`max-w-[85%] rounded-2xl px-4 py-3 sm:max-w-[70%] ${
+                                mine
+                                  ? "rounded-br-md bg-white text-black"
+                                  : "rounded-bl-md bg-[#292929] text-white"
+                              }`}
+                            >
+                              <p className="whitespace-pre-wrap break-words text-sm leading-6">
+                                {message.text}
+                              </p>
+
+                              <div
+                                className={`mt-1 text-[10px] ${
+                                  mine
+                                    ? "text-[#666666]"
+                                    : "text-[#888888]"
+                                }`}
+                              >
+                                {formatMessageTime(
+                                  message.created_at
+                                )}
+
+                                {mine &&
+                                  message.is_read && (
+                                    <span className="ml-2">
+                                      Read
+                                    </span>
+                                  )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 border-t border-[#303030] bg-[#181818] p-3 sm:p-4">
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        sendMessage();
+                      }}
+                      className="mx-auto flex max-w-3xl items-end gap-2"
+                    >
+                      <textarea
+                        value={text}
+                        onChange={(event) =>
+                          setText(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === "Enter" &&
+                            !event.shiftKey
+                          ) {
+                            event.preventDefault();
+                            sendMessage();
+                          }
+                        }}
+                        placeholder="Write a message..."
+                        rows={1}
+                        className="max-h-32 min-h-[46px] flex-1 resize-none rounded-xl border border-[#404040] bg-[#222222] px-4 py-3 text-sm text-white outline-none transition placeholder:text-[#666666] focus:border-white"
+                      />
+
+                      <button
+                        type="submit"
+                        disabled={
+                          sending || !text.trim()
+                        }
+                        className="min-h-[46px] rounded-xl bg-white px-5 py-3 text-sm font-black text-black transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {sending ? "..." : "Send"}
+                      </button>
                     </form>
-
-                  </>
-
-                )}
-
-              </section>
-
-            </div>
-
-          )}
-
-        </div>
-
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-1 items-center justify-center p-8 text-center text-[#777777]">
+                  Select a conversation.
+                </div>
+              )}
+            </section>
+          </div>
+        )}
       </section>
 
-      {/* CTA */}
-      <section className="w-full px-3 sm:px-5 lg:px-7 pb-8">
-
-        <div className="w-full max-w-7xl mx-auto bg-white text-black rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-5">
-
-          <div>
-
-            <p className="text-xl sm:text-2xl font-black">
-              Have something to sell?
-            </p>
-
-            <p className="text-gray-500 text-sm mt-1">
-              Create a listing and start selling on Sellio.
-            </p>
-
-          </div>
-
-          <Link
-            href="/sell"
-            className="bg-black hover:bg-[#222222] text-white px-6 py-3 rounded-xl font-black transition"
-          >
-            + Create Listing
-          </Link>
-
-        </div>
-
-      </section>
-
-      {/* FOOTER */}
-      <footer className="bg-black text-gray-400 shrink-0 border-t border-gray-800">
-
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
-
-            <div className="text-center sm:text-left">
-
-              <p className="text-white text-xl font-black">
-                Sellio
-              </p>
-
-              <p className="text-xs mt-1 text-gray-500">
-                Buy. Sell. Discover.
-              </p>
-
-            </div>
-
-            <div className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm">
-
-              <Link
-                href="/"
-                className="text-gray-400 hover:text-white transition"
-              >
-                Home
-              </Link>
-
-              <Link
-                href="/sell"
-                className="text-gray-400 hover:text-white transition"
-              >
-                Sell
-              </Link>
-
-              <Link
-                href="/my-listings"
-                className="text-gray-400 hover:text-white transition"
-              >
-                My Listings
-              </Link>
-
-              <Link
-                href="/favourites"
-                className="text-gray-400 hover:text-white transition"
-              >
-                Favourites
-              </Link>
-
-              <Link
-                href="/messages"
-                className="text-white font-bold"
-              >
-                Messages
-              </Link>
-
-              <Link
-                href="/profile"
-                className="text-gray-400 hover:text-white transition"
-              >
-                Profile
-              </Link>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      </footer>
-
-      {/* MOBILE SCROLLBAR */}
       <style jsx global>{`
-        .overflow-y-auto {
-          -webkit-overflow-scrolling: touch;
+        * {
+          scrollbar-width: thin;
         }
 
-        @media (max-width: 1023px) {
-          .overflow-y-auto::-webkit-scrollbar {
-            width: 6px;
-          }
+        ::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
 
-          .overflow-y-auto::-webkit-scrollbar-track {
-            background: #181818;
-          }
+        ::-webkit-scrollbar-track {
+          background: transparent;
+        }
 
-          .overflow-y-auto::-webkit-scrollbar-thumb {
-            background: #555;
-            border-radius: 999px;
-          }
+        ::-webkit-scrollbar-thumb {
+          background: #444444;
+          border-radius: 999px;
+        }
 
-          .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-            background: #777;
-          }
+        ::-webkit-scrollbar-thumb:hover {
+          background: #666666;
         }
       `}</style>
-
     </main>
+  );
+}
+
+export default function MessagesPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-[#111111] text-white">
+          <div className="flex min-h-screen items-center justify-center">
+            <div className="text-sm text-[#999999]">
+              Loading messages...
+            </div>
+          </div>
+        </main>
+      }
+    >
+      <MessagesContent />
+    </Suspense>
   );
 }
