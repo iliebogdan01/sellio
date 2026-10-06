@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -363,7 +363,7 @@ function ListingPageContent() {
                   </div>
                 )}
 
-                {/* PREVIOUS */}
+                {/* PREVIOUS / NEXT */}
 
                 {images.length > 1 && (
                   <>
@@ -396,6 +396,7 @@ function ListingPageContent() {
                     </button>
                   </>
                 )}
+
               </div>
 
               {/* THUMBNAILS */}
@@ -431,6 +432,7 @@ function ListingPageContent() {
                   </div>
                 </div>
               )}
+
             </div>
 
             {/* DESCRIPTION */}
@@ -693,5 +695,21 @@ function ListingPageContent() {
 }
 
 export default function ListingPage() {
-  return <ListingPageContent />;
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-[#f5f5f5] flex items-center justify-center">
+          <div className="text-center">
+            <div className="mx-auto h-12 w-12 rounded-full border-4 border-gray-200 border-t-black animate-spin" />
+
+            <p className="mt-5 text-gray-500 font-semibold">
+              Loading listing...
+            </p>
+          </div>
+        </main>
+      }
+    >
+      <ListingPageContent />
+    </Suspense>
+  );
 }
