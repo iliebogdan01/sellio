@@ -29,11 +29,16 @@ function ListingPageContent() {
   const [error, setError] = useState("");
   const [selectedImage, setSelectedImage] = useState(0);
 
+  const [isFavourite, setIsFavourite] = useState(false);
+  const [favouriteLoading, setFavouriteLoading] = useState(false);
+  const [favouriteChecking, setFavouriteChecking] = useState(true);
+
   useEffect(() => {
     async function loadListing() {
       if (!listingId) {
         setError("Listing ID is missing.");
         setLoading(false);
+        setFavouriteChecking(false);
         return;
       }
 
@@ -66,17 +71,52 @@ function ListingPageContent() {
           console.error("Supabase error:", supabaseError);
           setError(supabaseError.message);
           setListing(null);
+          setFavouriteChecking(false);
           return;
         }
 
         if (!data) {
           setError("This listing could not be found.");
           setListing(null);
+          setFavouriteChecking(false);
           return;
         }
 
-        setListing(data as Listing);
+        const loadedListing = data as Listing;
+
+        setListing(loadedListing);
         setSelectedImage(0);
+
+        /*
+         * CHECK IF LISTING IS ALREADY A FAVOURITE
+         */
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (user) {
+          const { data: favourite, error: favouriteError } =
+            await supabase
+              .from("favourites")
+              .select("id")
+              .eq("user_id", user.id)
+              .eq("listing_id", loadedListing.id)
+              .maybeSingle();
+
+          if (favouriteError) {
+            console.error(
+              "Could not check favourite:",
+              favouriteError
+            );
+
+            setIsFavourite(false);
+          } else {
+            setIsFavourite(!!favourite);
+          }
+        } else {
+          setIsFavourite(false);
+        }
       } catch (err) {
         console.error("Listing error:", err);
 
@@ -87,11 +127,132 @@ function ListingPageContent() {
         );
       } finally {
         setLoading(false);
+        setFavouriteChecking(false);
       }
     }
 
     loadListing();
   }, [listingId]);
+
+  /*
+   * ADD / REMOVE FAVOURITE
+   */
+
+  async function toggleFavourite() {
+    if (!listing || favouriteLoading) {
+      return;
+    }
+
+    try {
+      setFavouriteLoading(true);
+
+      const supabase = createClient();
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        window.location.href = "/login";
+        return;
+      }
+
+      /*
+       * REMOVE FAVOURITE
+       */
+
+      if (isFavourite) {
+        const { error: deleteError } = await supabase
+          .from("favourites")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("listing_id", listing.id);
+
+        if (deleteError) {
+          console.error(
+            "Could not remove favourite:",
+            deleteError
+          );
+
+          alert(
+            "Could not remove this listing from favourites."
+          );
+
+          return;
+        }
+
+        setIsFavourite(false);
+        return;
+      }
+
+      /*
+       * ADD FAVOURITE
+       */
+
+      const { data: existingFavourite, error: checkError } =
+        await supabase
+          .from("favourites")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("listing_id", listing.id)
+          .maybeSingle();
+
+      if (checkError) {
+        console.error(
+          "Could not check existing favourite:",
+          checkError
+        );
+
+        alert(
+          "Could not save this listing to favourites."
+        );
+
+        return;
+      }
+
+      /*
+       * Prevent duplicate favourites
+       */
+
+      if (existingFavourite) {
+        setIsFavourite(true);
+        return;
+      }
+
+      const { error: insertError } = await supabase
+        .from("favourites")
+        .insert({
+          user_id: user.id,
+          listing_id: listing.id,
+        });
+
+      if (insertError) {
+        console.error(
+          "Could not add favourite:",
+          insertError
+        );
+
+        alert(
+          "Could not save this listing to favourites."
+        );
+
+        return;
+      }
+
+      setIsFavourite(true);
+    } catch (error) {
+      console.error(
+        "Favourite action error:",
+        error
+      );
+
+      alert(
+        "Something went wrong. Please try again."
+      );
+    } finally {
+      setFavouriteLoading(false);
+    }
+  }
 
   function getImages(item: Listing): string[] {
     const result: string[] = [];
@@ -149,7 +310,10 @@ function ListingPageContent() {
       return false;
     }
 
-    return new Date(item.promoted_until).getTime() > Date.now();
+    return (
+      new Date(item.promoted_until).getTime() >
+      Date.now()
+    );
   }
 
   if (loading) {
@@ -335,8 +499,6 @@ function ListingPageContent() {
 
             <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
 
-              {/* MAIN IMAGE */}
-
               <div className="relative bg-[#eeeeee]">
 
                 {currentImage ? (
@@ -355,15 +517,11 @@ function ListingPageContent() {
                   </div>
                 )}
 
-                {/* IMAGE COUNTER */}
-
                 {images.length > 0 && (
                   <div className="absolute bottom-4 right-4 bg-black/75 text-white px-3 py-1.5 rounded-lg text-xs font-bold">
                     {selectedImage + 1} / {images.length}
                   </div>
                 )}
-
-                {/* PREVIOUS / NEXT */}
 
                 {images.length > 1 && (
                   <>
@@ -399,11 +557,8 @@ function ListingPageContent() {
 
               </div>
 
-              {/* THUMBNAILS */}
-
               {images.length > 1 && (
                 <div className="p-4 border-t border-gray-200">
-
                   <div className="flex gap-3 overflow-x-auto pb-1">
 
                     {images.map((src, index) => (
@@ -446,7 +601,8 @@ function ListingPageContent() {
               <div className="border-t border-gray-200 mt-5 pt-5">
 
                 <p className="text-gray-700 leading-7 whitespace-pre-wrap">
-                  {listing.description || "No description provided."}
+                  {listing.description ||
+                    "No description provided."}
                 </p>
 
               </div>
@@ -468,7 +624,8 @@ function ListingPageContent() {
                   </p>
 
                   <p className="font-bold mt-1">
-                    {listing.category || "Not specified"}
+                    {listing.category ||
+                      "Not specified"}
                   </p>
                 </div>
 
@@ -478,7 +635,8 @@ function ListingPageContent() {
                   </p>
 
                   <p className="font-bold mt-1">
-                    {listing.location || "Not specified"}
+                    {listing.location ||
+                      "Not specified"}
                   </p>
                 </div>
 
@@ -488,7 +646,9 @@ function ListingPageContent() {
                   </p>
 
                   <p className="font-bold mt-1">
-                    {formatDate(listing.created_at)}
+                    {formatDate(
+                      listing.created_at
+                    )}
                   </p>
                 </div>
 
@@ -574,11 +734,37 @@ function ListingPageContent() {
                   💬 Contact Seller
                 </Link>
 
+                {/* FAVOURITE BUTTON */}
+
                 <button
                   type="button"
-                  className="w-full mt-3 border-2 border-gray-200 hover:border-black bg-white py-4 rounded-xl font-black transition"
+                  onClick={toggleFavourite}
+                  disabled={
+                    favouriteLoading ||
+                    favouriteChecking
+                  }
+                  className={`w-full mt-3 py-4 rounded-xl font-black transition border-2 flex items-center justify-center gap-2 ${
+                    isFavourite
+                      ? "bg-black text-white border-black hover:bg-gray-800"
+                      : "bg-white text-black border-gray-200 hover:border-black"
+                  } disabled:opacity-60 disabled:cursor-not-allowed`}
                 >
-                  ♡ Add to Favourites
+                  {favouriteLoading ? (
+                    <>
+                      <span className="inline-block w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      Saving...
+                    </>
+                  ) : favouriteChecking ? (
+                    "Checking..."
+                  ) : isFavourite ? (
+                    <>
+                      ❤️ Remove from Favourites
+                    </>
+                  ) : (
+                    <>
+                      ♡ Add to Favourites
+                    </>
+                  )}
                 </button>
 
               </div>
