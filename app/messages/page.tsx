@@ -59,10 +59,7 @@ export default function MessagesPage() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
 
-  // Containerul care are propriul scroll
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
-
-  // Element invizibil aflat la finalul conversației
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   async function loadMessages(currentUserId?: string) {
@@ -169,12 +166,6 @@ export default function MessagesPage() {
     };
   }, []);
 
-  /*
-   * Realtime + polling.
-   *
-   * Chiar dacă Realtime nu este activat în Supabase,
-   * polling-ul la 5 secunde continuă să funcționeze.
-   */
   useEffect(() => {
     if (!userId) return;
 
@@ -290,9 +281,6 @@ export default function MessagesPage() {
     return result;
   }, [messages, listings, userId]);
 
-  /*
-   * Selectăm automat prima conversație.
-   */
   useEffect(() => {
     if (!selectedKey && conversations.length > 0) {
       setSelectedKey(conversations[0].key);
@@ -315,20 +303,21 @@ export default function MessagesPage() {
     ) || null;
 
   /*
-   * AUTO-SCROLL
-   *
-   * Când schimbăm conversația sau apar mesaje noi,
-   * mergem automat la ultimul mesaj.
+   * AUTO SCROLL
    */
   useEffect(() => {
     if (!selectedConversation) return;
 
     const timeout = window.setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "end",
-      });
-    }, 50);
+      const container = messagesContainerRef.current;
+
+      if (container) {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "smooth",
+        });
+      }
+    }, 100);
 
     return () => {
       window.clearTimeout(timeout);
@@ -339,7 +328,7 @@ export default function MessagesPage() {
   ]);
 
   /*
-   * Marchează mesajele primite ca citite.
+   * MARK AS READ
    */
   useEffect(() => {
     if (!userId || !selectedConversation) return;
@@ -488,9 +477,7 @@ export default function MessagesPage() {
 
       {/* HEADER */}
       <header className="bg-[#080808] border-b border-[#292929] sticky top-0 z-50">
-
         <div className="w-full px-3 sm:px-5 lg:px-7 py-3">
-
           <div className="flex items-center gap-3">
 
             <Link
@@ -501,20 +488,16 @@ export default function MessagesPage() {
             </Link>
 
             <div className="flex-1 flex justify-center">
-
               <Link
                 href="/"
                 className="hidden sm:flex w-full max-w-xl bg-[#151515] border border-[#333333] rounded-xl px-4 py-2.5 items-center gap-3 hover:border-[#555555] transition"
               >
-                <span className="text-xl">
-                  🔎
-                </span>
+                <span className="text-xl">🔎</span>
 
                 <span className="text-sm text-[#888888]">
                   What are you looking for?
                 </span>
               </Link>
-
             </div>
 
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
@@ -545,18 +528,13 @@ export default function MessagesPage() {
               </Link>
 
             </div>
-
           </div>
-
         </div>
-
       </header>
 
       {/* CATEGORY BAR */}
       <section className="bg-[#0d0d0d] border-b border-[#292929]">
-
         <div className="w-full px-3 sm:px-5 lg:px-7 py-3">
-
           <div className="flex gap-2 overflow-x-auto">
 
             {categoryLinks.map((category) => (
@@ -574,18 +552,16 @@ export default function MessagesPage() {
             ))}
 
           </div>
-
         </div>
-
       </section>
 
       {/* MAIN */}
-      <section className="flex-1 w-full px-3 sm:px-5 lg:px-7 py-6">
+      <section className="flex-1 w-full px-3 sm:px-5 lg:px-7 py-4 sm:py-6">
 
         <div className="w-full max-w-7xl mx-auto">
 
           {/* TITLE */}
-          <div className="mb-5">
+          <div className="mb-4 sm:mb-5">
 
             <p className="text-xs uppercase tracking-[0.25em] font-bold text-[#777777]">
               Sellio Account
@@ -604,7 +580,6 @@ export default function MessagesPage() {
           {/* ERROR */}
           {error && (
             <div className="mb-5 bg-[#241414] border border-[#5a2929] text-[#ffb5b5] rounded-xl px-5 py-4">
-
               <p className="font-black">
                 Something went wrong
               </p>
@@ -612,7 +587,6 @@ export default function MessagesPage() {
               <p className="text-sm mt-1">
                 {error}
               </p>
-
             </div>
           )}
 
@@ -633,13 +607,36 @@ export default function MessagesPage() {
 
             /*
              * IMPORTANT:
-             * h-[calc(100vh-250px)] + overflow-hidden
-             * ține aplicația de chat în ecran.
+             * Pe mobil chatul are o înălțime limitată
+             * bazată pe viewport.
+             *
+             * 100dvh = înălțimea reală disponibilă pe telefon.
              */
-            <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-4 lg:h-[calc(100vh-250px)] lg:min-h-[600px]">
+            <div
+              className="
+                grid
+                grid-cols-1
+                lg:grid-cols-[320px_minmax(0,1fr)]
+                gap-4
+                lg:h-[calc(100vh-250px)]
+                lg:min-h-[600px]
+              "
+            >
 
               {/* CONVERSATIONS */}
-              <aside className="bg-[#181818] border border-[#303030] rounded-2xl overflow-hidden flex flex-col min-h-[320px] lg:min-h-0">
+              <aside
+                className="
+                  bg-[#181818]
+                  border border-[#303030]
+                  rounded-2xl
+                  overflow-hidden
+                  flex
+                  flex-col
+                  h-[260px]
+                  lg:h-auto
+                  lg:min-h-0
+                "
+              >
 
                 <div className="px-5 py-4 border-b border-[#303030] shrink-0">
 
@@ -657,7 +654,15 @@ export default function MessagesPage() {
 
                 </div>
 
-                <div className="overflow-y-auto flex-1">
+                <div
+                  className="
+                    flex-1
+                    min-h-0
+                    overflow-y-auto
+                    overscroll-contain
+                    [scrollbar-width:thin]
+                  "
+                >
 
                   {conversations.length === 0 ? (
 
@@ -798,7 +803,21 @@ export default function MessagesPage() {
               </aside>
 
               {/* CHAT */}
-              <section className="bg-[#181818] border border-[#303030] rounded-2xl overflow-hidden flex flex-col min-h-[600px] lg:min-h-0">
+              <section
+                className="
+                  bg-[#181818]
+                  border border-[#303030]
+                  rounded-2xl
+                  overflow-hidden
+                  flex
+                  flex-col
+                  min-h-0
+                  h-[calc(100dvh-390px)]
+                  min-h-[420px]
+                  lg:h-auto
+                  lg:min-h-0
+                "
+              >
 
                 {!selectedConversation ? (
 
@@ -825,6 +844,7 @@ export default function MessagesPage() {
                 ) : (
 
                   <>
+
                     {/* CHAT HEADER */}
                     <div className="px-4 sm:px-6 py-4 border-b border-[#303030] shrink-0">
 
@@ -849,7 +869,7 @@ export default function MessagesPage() {
                               selectedConversation.listingId
                             )
                           )}`}
-                          className="shrink-0 bg-white hover:bg-gray-200 text-black px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition"
+                          className="shrink-0 bg-white hover:bg-gray-200 text-black px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition"
                         >
                           View Listing
                         </Link>
@@ -858,10 +878,20 @@ export default function MessagesPage() {
 
                     </div>
 
-                    {/* MESSAGES - ONLY THIS AREA SCROLLS */}
+                    {/* MESSAGES */}
                     <div
                       ref={messagesContainerRef}
-                      className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 py-5"
+                      className="
+                        flex-1
+                        min-h-0
+                        overflow-y-auto
+                        overscroll-contain
+                        touch-pan-y
+                        px-4
+                        sm:px-6
+                        py-5
+                        [scrollbar-width:thin]
+                      "
                     >
 
                       <div className="space-y-3">
@@ -884,7 +914,7 @@ export default function MessagesPage() {
                               >
 
                                 <div
-                                  className={`max-w-[80%] sm:max-w-[70%] ${
+                                  className={`max-w-[85%] sm:max-w-[70%] ${
                                     mine
                                       ? "items-end"
                                       : "items-start"
@@ -920,7 +950,6 @@ export default function MessagesPage() {
                           }
                         )}
 
-                        {/* AUTO-SCROLL TARGET */}
                         <div
                           ref={messagesEndRef}
                           className="h-px"
@@ -930,10 +959,17 @@ export default function MessagesPage() {
 
                     </div>
 
-                    {/* MESSAGE INPUT */}
+                    {/* INPUT */}
                     <form
                       onSubmit={sendMessage}
-                      className="border-t border-[#303030] p-3 sm:p-4 shrink-0 bg-[#151515]"
+                      className="
+                        border-t
+                        border-[#303030]
+                        p-3
+                        sm:p-4
+                        shrink-0
+                        bg-[#151515]
+                      "
                     >
 
                       <div className="flex items-end gap-2">
@@ -957,7 +993,24 @@ export default function MessagesPage() {
                           }}
                           rows={1}
                           placeholder="Write a message..."
-                          className="flex-1 resize-none bg-[#202020] border border-[#3a3a3a] focus:border-[#666666] outline-none text-white placeholder:text-[#666666] rounded-xl px-4 py-3 text-sm min-h-[46px] max-h-32 overflow-y-auto"
+                          className="
+                            flex-1
+                            resize-none
+                            bg-[#202020]
+                            border
+                            border-[#3a3a3a]
+                            focus:border-[#666666]
+                            outline-none
+                            text-white
+                            placeholder:text-[#666666]
+                            rounded-xl
+                            px-4
+                            py-3
+                            text-sm
+                            min-h-[46px]
+                            max-h-32
+                            overflow-y-auto
+                          "
                         />
 
                         <button
@@ -966,7 +1019,22 @@ export default function MessagesPage() {
                             sending ||
                             !text.trim()
                           }
-                          className="bg-white hover:bg-gray-200 disabled:bg-[#333333] disabled:text-[#777777] text-black disabled:cursor-not-allowed px-5 py-3 rounded-xl font-black text-sm transition shrink-0"
+                          className="
+                            bg-white
+                            hover:bg-gray-200
+                            disabled:bg-[#333333]
+                            disabled:text-[#777777]
+                            text-black
+                            disabled:cursor-not-allowed
+                            px-4
+                            sm:px-5
+                            py-3
+                            rounded-xl
+                            font-black
+                            text-sm
+                            transition
+                            shrink-0
+                          "
                         >
                           {sending
                             ? "..."
@@ -980,6 +1048,7 @@ export default function MessagesPage() {
                       </p>
 
                     </form>
+
                   </>
 
                 )}
@@ -1092,6 +1161,32 @@ export default function MessagesPage() {
         </div>
 
       </footer>
+
+      {/* MOBILE SCROLLBAR */}
+      <style jsx global>{`
+        .overflow-y-auto {
+          -webkit-overflow-scrolling: touch;
+        }
+
+        @media (max-width: 1023px) {
+          .overflow-y-auto::-webkit-scrollbar {
+            width: 6px;
+          }
+
+          .overflow-y-auto::-webkit-scrollbar-track {
+            background: #181818;
+          }
+
+          .overflow-y-auto::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 999px;
+          }
+
+          .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+            background: #777;
+          }
+        }
+      `}</style>
 
     </main>
   );
