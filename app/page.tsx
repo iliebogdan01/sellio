@@ -253,7 +253,7 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f5f5] text-black">
+    <main className="flex min-h-screen flex-col bg-[#f5f5f5] text-black">
 
       {/* HEADER */}
       <header className="sticky top-0 z-50 border-b border-gray-200 bg-white shadow-sm">
@@ -292,11 +292,10 @@ export default function HomePage() {
                   </button>
                 )}
 
-                <button
-                  className="bg-black px-7 font-semibold text-white transition hover:bg-gray-800"
-                >
+                <button className="bg-black px-7 font-semibold text-white transition hover:bg-gray-800">
                   Search
                 </button>
+
               </div>
             </div>
 
@@ -317,10 +316,6 @@ export default function HomePage() {
                 My Listings
               </Link>
 
-              {/* IMPORTANT:
-                  MessageBadge already contains its own Link.
-                  Do NOT wrap it inside another Link.
-              */}
               <MessageBadge />
 
               <Link
@@ -336,6 +331,7 @@ export default function HomePage() {
               >
                 + Sell
               </Link>
+
             </div>
 
             {/* MOBILE MENU */}
@@ -345,6 +341,7 @@ export default function HomePage() {
             >
               ☰
             </button>
+
           </div>
 
           {/* MOBILE SEARCH */}
@@ -370,6 +367,7 @@ export default function HomePage() {
                   ✕
                 </button>
               )}
+
             </div>
           </div>
         </div>
@@ -430,6 +428,7 @@ export default function HomePage() {
             </div>
           </div>
         )}
+
       </header>
 
       {/* DESKTOP CATEGORY BAR */}
@@ -470,6 +469,7 @@ export default function HomePage() {
             ))}
 
           </div>
+
         </div>
       </div>
 
@@ -506,21 +506,26 @@ export default function HomePage() {
                     : "border-gray-200 bg-gray-50"
                 }`}
               >
-                <span className="mr-1">{category.icon}</span>
+                <span className="mr-1">
+                  {category.icon}
+                </span>
+
                 {category.name}
               </button>
             ))}
 
           </div>
+
         </div>
       </div>
 
-      {/* MAIN */}
-      <section className="w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      {/* MAIN CONTENT */}
+      <section className="flex-1 w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
 
         <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
 
           <div>
+
             <h1 className="text-2xl font-black sm:text-3xl">
               Find what you need
             </h1>
@@ -528,15 +533,19 @@ export default function HomePage() {
             <p className="mt-1 text-sm text-gray-500">
               Discover great deals from sellers on Sellio.
             </p>
+
           </div>
 
           <div className="text-sm text-gray-500">
+
             <span className="font-semibold text-black">
               {filteredListings.length}
             </span>{" "}
+
             {filteredListings.length === 1
               ? "listing"
               : "listings"}
+
           </div>
 
         </div>
@@ -561,7 +570,6 @@ export default function HomePage() {
 
             </div>
 
-            {/* CATEGORY */}
             <div className="mb-6">
 
               <label className="mb-2 block text-sm font-semibold">
@@ -587,11 +595,11 @@ export default function HomePage() {
                     {category.name}
                   </option>
                 ))}
+
               </select>
 
             </div>
 
-            {/* PRICE */}
             <div className="mb-6">
 
               <label className="mb-2 block text-sm font-semibold">
@@ -621,9 +629,9 @@ export default function HomePage() {
                 />
 
               </div>
+
             </div>
 
-            {/* SORT */}
             <div>
 
               <label className="mb-2 block text-sm font-semibold">
@@ -656,6 +664,7 @@ export default function HomePage() {
                 <option value="a-z">
                   A-Z
                 </option>
+
               </select>
 
             </div>
@@ -689,6 +698,7 @@ export default function HomePage() {
                       {category.name}
                     </option>
                   ))}
+
                 </select>
 
                 <select
@@ -717,6 +727,7 @@ export default function HomePage() {
                   <option value="a-z">
                     A-Z
                   </option>
+
                 </select>
 
                 <input
@@ -752,6 +763,7 @@ export default function HomePage() {
 
             {/* LOADING */}
             {loading ? (
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
 
                 {Array.from({ length: 10 }).map((_, index) => (
@@ -759,6 +771,7 @@ export default function HomePage() {
                     key={index}
                     className="overflow-hidden rounded-2xl border border-gray-200 bg-white"
                   >
+
                     <div className="aspect-[4/3] animate-pulse bg-gray-200" />
 
                     <div className="space-y-3 p-4">
@@ -770,10 +783,12 @@ export default function HomePage() {
                       <div className="h-4 w-2/3 animate-pulse rounded bg-gray-200" />
 
                     </div>
+
                   </div>
                 ))}
 
               </div>
+
             ) : filteredListings.length === 0 ? (
 
               <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 text-center shadow-sm">
@@ -798,6 +813,7 @@ export default function HomePage() {
                 </button>
 
               </div>
+
             ) : (
 
               <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
@@ -857,6 +873,7 @@ export default function HomePage() {
                         href={`/listing?id=${item.id}`}
                         className="block"
                       >
+
                         <div className="p-4">
 
                           <h2 className="line-clamp-2 min-w-0 text-base font-bold leading-tight">
@@ -901,6 +918,7 @@ export default function HomePage() {
                           </div>
 
                         </div>
+
                       </Link>
 
                     </article>
@@ -908,10 +926,13 @@ export default function HomePage() {
                 })}
 
               </div>
+
             )}
 
           </div>
+
         </div>
+
       </section>
 
       {/* SELL CTA */}
@@ -941,11 +962,13 @@ export default function HomePage() {
             </Link>
 
           </div>
+
         </div>
+
       </section>
 
-      {/* FOOTER */}
-      <footer className="border-t border-gray-200 bg-white">
+      {/* FOOTER - STAYS AT THE BOTTOM */}
+      <footer className="mt-auto border-t border-gray-200 bg-white">
 
         <div className="w-full px-4 py-8 sm:px-6 lg:px-8">
 
@@ -1009,6 +1032,7 @@ export default function HomePage() {
           </div>
 
         </div>
+
       </footer>
 
     </main>
