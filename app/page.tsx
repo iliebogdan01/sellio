@@ -181,17 +181,13 @@ export default function HomePage() {
     if (minPrice) {
       const min = Number(minPrice);
 
-      result = result.filter((item) => {
-        return Number(item.price) >= min;
-      });
+      result = result.filter((item) => Number(item.price) >= min);
     }
 
     if (maxPrice) {
       const max = Number(maxPrice);
 
-      result = result.filter((item) => {
-        return Number(item.price) <= max;
-      });
+      result = result.filter((item) => Number(item.price) <= max);
     }
 
     result.sort((a, b) => {
@@ -258,10 +254,12 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-[#f5f5f5] text-black">
+
       {/* HEADER */}
       <header className="sticky top-0 z-50 border-b border-gray-200 bg-white shadow-sm">
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex h-[72px] items-center gap-4">
+
             {/* LOGO */}
             <Link
               href="/"
@@ -273,6 +271,7 @@ export default function HomePage() {
             {/* DESKTOP SEARCH */}
             <div className="hidden min-w-0 flex-1 md:block">
               <div className="mx-auto flex max-w-[1100px] overflow-hidden rounded-xl border border-gray-300 bg-white">
+
                 <div className="flex items-center px-4 text-gray-400">
                   🔍
                 </div>
@@ -294,7 +293,6 @@ export default function HomePage() {
                 )}
 
                 <button
-                  onClick={() => {}}
                   className="bg-black px-7 font-semibold text-white transition hover:bg-gray-800"
                 >
                   Search
@@ -304,6 +302,7 @@ export default function HomePage() {
 
             {/* DESKTOP ACTIONS */}
             <div className="hidden shrink-0 items-center gap-2 lg:flex">
+
               <Link
                 href="/favourites"
                 className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100"
@@ -318,12 +317,11 @@ export default function HomePage() {
                 My Listings
               </Link>
 
-              <Link
-                href="/messages"
-                className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100"
-              >
-                <MessageBadge />
-              </Link>
+              {/* IMPORTANT:
+                  MessageBadge already contains its own Link.
+                  Do NOT wrap it inside another Link.
+              */}
+              <MessageBadge />
 
               <Link
                 href="/profile"
@@ -340,7 +338,7 @@ export default function HomePage() {
               </Link>
             </div>
 
-            {/* MOBILE MENU BUTTON */}
+            {/* MOBILE MENU */}
             <button
               onClick={() => setMobileMenuOpen((value) => !value)}
               className="ml-auto rounded-lg border border-gray-300 px-3 py-2 text-xl md:hidden"
@@ -352,6 +350,7 @@ export default function HomePage() {
           {/* MOBILE SEARCH */}
           <div className="pb-3 md:hidden">
             <div className="flex overflow-hidden rounded-xl border border-gray-300 bg-white">
+
               <div className="flex items-center px-3 text-gray-400">
                 🔍
               </div>
@@ -379,6 +378,7 @@ export default function HomePage() {
         {mobileMenuOpen && (
           <div className="border-t border-gray-200 bg-white md:hidden">
             <div className="space-y-1 px-4 py-4">
+
               <Link
                 href="/"
                 onClick={() => setMobileMenuOpen(false)}
@@ -426,6 +426,7 @@ export default function HomePage() {
               >
                 + Sell
               </Link>
+
             </div>
           </div>
         )}
@@ -434,7 +435,9 @@ export default function HomePage() {
       {/* DESKTOP CATEGORY BAR */}
       <div className="hidden border-b border-gray-200 bg-white lg:block">
         <div className="w-full overflow-x-auto px-4 sm:px-6 lg:px-8">
+
           <div className="flex min-w-max items-center gap-2 py-3">
+
             <button
               onClick={() => setSelectedCategory("")}
               className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
@@ -465,6 +468,7 @@ export default function HomePage() {
                 {category.icon} {category.name}
               </button>
             ))}
+
           </div>
         </div>
       </div>
@@ -472,7 +476,9 @@ export default function HomePage() {
       {/* MOBILE CATEGORIES */}
       <div className="border-b border-gray-200 bg-white lg:hidden">
         <div className="overflow-x-auto px-4 py-3">
+
           <div className="flex min-w-max gap-2">
+
             <button
               onClick={() => setSelectedCategory("")}
               className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
@@ -504,13 +510,16 @@ export default function HomePage() {
                 {category.name}
               </button>
             ))}
+
           </div>
         </div>
       </div>
 
       {/* MAIN */}
       <section className="w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+
         <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+
           <div>
             <h1 className="text-2xl font-black sm:text-3xl">
               Find what you need
@@ -525,15 +534,23 @@ export default function HomePage() {
             <span className="font-semibold text-black">
               {filteredListings.length}
             </span>{" "}
-            {filteredListings.length === 1 ? "listing" : "listings"}
+            {filteredListings.length === 1
+              ? "listing"
+              : "listings"}
           </div>
+
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[250px_minmax(0,1fr)]">
+
           {/* SIDEBAR */}
           <aside className="hidden h-fit rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:block">
+
             <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-lg font-bold">Filters</h2>
+
+              <h2 className="text-lg font-bold">
+                Filters
+              </h2>
 
               <button
                 onClick={clearFilters}
@@ -541,10 +558,12 @@ export default function HomePage() {
               >
                 Clear
               </button>
+
             </div>
 
             {/* CATEGORY */}
             <div className="mb-6">
+
               <label className="mb-2 block text-sm font-semibold">
                 Category
               </label>
@@ -556,7 +575,9 @@ export default function HomePage() {
                 }
                 className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 outline-none focus:border-black"
               >
-                <option value="">All categories</option>
+                <option value="">
+                  All categories
+                </option>
 
                 {categories.map((category) => (
                   <option
@@ -567,19 +588,24 @@ export default function HomePage() {
                   </option>
                 ))}
               </select>
+
             </div>
 
             {/* PRICE */}
             <div className="mb-6">
+
               <label className="mb-2 block text-sm font-semibold">
                 Price
               </label>
 
               <div className="grid grid-cols-2 gap-2">
+
                 <input
                   type="number"
                   value={minPrice}
-                  onChange={(e) => setMinPrice(e.target.value)}
+                  onChange={(e) =>
+                    setMinPrice(e.target.value)
+                  }
                   placeholder="Min"
                   className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-black"
                 />
@@ -587,42 +613,63 @@ export default function HomePage() {
                 <input
                   type="number"
                   value={maxPrice}
-                  onChange={(e) => setMaxPrice(e.target.value)}
+                  onChange={(e) =>
+                    setMaxPrice(e.target.value)
+                  }
                   placeholder="Max"
                   className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-black"
                 />
+
               </div>
             </div>
 
             {/* SORT */}
             <div>
+
               <label className="mb-2 block text-sm font-semibold">
                 Sort by
               </label>
 
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
+                onChange={(e) =>
+                  setSortBy(e.target.value)
+                }
                 className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 outline-none focus:border-black"
               >
-                <option value="newest">Newest</option>
-                <option value="oldest">Oldest</option>
+                <option value="newest">
+                  Newest
+                </option>
+
+                <option value="oldest">
+                  Oldest
+                </option>
+
                 <option value="price-low">
                   Price: Low to High
                 </option>
+
                 <option value="price-high">
                   Price: High to Low
                 </option>
-                <option value="a-z">A-Z</option>
+
+                <option value="a-z">
+                  A-Z
+                </option>
               </select>
+
             </div>
+
           </aside>
 
-          {/* LISTINGS AREA */}
+          {/* LISTINGS */}
           <div className="min-w-0">
+
             {/* MOBILE FILTERS */}
             <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm lg:hidden">
+
               <div className="grid grid-cols-2 gap-3">
+
                 <select
                   value={selectedCategory}
                   onChange={(e) =>
@@ -630,7 +677,9 @@ export default function HomePage() {
                   }
                   className="rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm outline-none"
                 >
-                  <option value="">All categories</option>
+                  <option value="">
+                    All categories
+                  </option>
 
                   {categories.map((category) => (
                     <option
@@ -644,24 +693,38 @@ export default function HomePage() {
 
                 <select
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
+                  onChange={(e) =>
+                    setSortBy(e.target.value)
+                  }
                   className="rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm outline-none"
                 >
-                  <option value="newest">Newest</option>
-                  <option value="oldest">Oldest</option>
+                  <option value="newest">
+                    Newest
+                  </option>
+
+                  <option value="oldest">
+                    Oldest
+                  </option>
+
                   <option value="price-low">
                     Price Low
                   </option>
+
                   <option value="price-high">
                     Price High
                   </option>
-                  <option value="a-z">A-Z</option>
+
+                  <option value="a-z">
+                    A-Z
+                  </option>
                 </select>
 
                 <input
                   type="number"
                   value={minPrice}
-                  onChange={(e) => setMinPrice(e.target.value)}
+                  onChange={(e) =>
+                    setMinPrice(e.target.value)
+                  }
                   placeholder="Min price"
                   className="rounded-xl border border-gray-300 px-3 py-3 text-sm outline-none"
                 />
@@ -669,10 +732,13 @@ export default function HomePage() {
                 <input
                   type="number"
                   value={maxPrice}
-                  onChange={(e) => setMaxPrice(e.target.value)}
+                  onChange={(e) =>
+                    setMaxPrice(e.target.value)
+                  }
                   placeholder="Max price"
                   className="rounded-xl border border-gray-300 px-3 py-3 text-sm outline-none"
                 />
+
               </div>
 
               <button
@@ -681,11 +747,13 @@ export default function HomePage() {
               >
                 Clear filters
               </button>
+
             </div>
 
-            {/* LISTINGS */}
+            {/* LOADING */}
             {loading ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+
                 {Array.from({ length: 10 }).map((_, index) => (
                   <div
                     key={index}
@@ -694,16 +762,25 @@ export default function HomePage() {
                     <div className="aspect-[4/3] animate-pulse bg-gray-200" />
 
                     <div className="space-y-3 p-4">
+
                       <div className="h-5 animate-pulse rounded bg-gray-200" />
+
                       <div className="h-4 w-1/2 animate-pulse rounded bg-gray-200" />
+
                       <div className="h-4 w-2/3 animate-pulse rounded bg-gray-200" />
+
                     </div>
                   </div>
                 ))}
+
               </div>
             ) : filteredListings.length === 0 ? (
+
               <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 text-center shadow-sm">
-                <div className="text-5xl">🔎</div>
+
+                <div className="text-5xl">
+                  🔎
+                </div>
 
                 <h2 className="mt-4 text-xl font-bold">
                   No listings found
@@ -719,10 +796,14 @@ export default function HomePage() {
                 >
                   Clear filters
                 </button>
+
               </div>
             ) : (
+
               <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+
                 {filteredListings.map((item) => {
+
                   const image = getImage(item);
                   const promoted = isPromoted(item);
                   const favourite = favourites.includes(item.id);
@@ -732,8 +813,10 @@ export default function HomePage() {
                       key={item.id}
                       className="group min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-lg"
                     >
+
                       {/* IMAGE */}
                       <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+
                         {image ? (
                           <img
                             src={image}
@@ -766,6 +849,7 @@ export default function HomePage() {
                         >
                           {favourite ? "♥" : "♡"}
                         </button>
+
                       </div>
 
                       {/* CONTENT */}
@@ -774,13 +858,12 @@ export default function HomePage() {
                         className="block"
                       >
                         <div className="p-4">
-                          <div className="mb-2 flex items-start justify-between gap-3">
-                            <h2 className="line-clamp-2 min-w-0 flex-1 text-base font-bold leading-tight">
-                              {item.title}
-                            </h2>
-                          </div>
 
-                          <div className="text-xl font-black">
+                          <h2 className="line-clamp-2 min-w-0 text-base font-bold leading-tight">
+                            {item.title}
+                          </h2>
+
+                          <div className="mt-2 text-xl font-black">
                             £
                             {Number(item.price).toLocaleString(
                               "en-GB"
@@ -788,6 +871,7 @@ export default function HomePage() {
                           </div>
 
                           <div className="mt-3 space-y-1 text-sm text-gray-500">
+
                             {item.location && (
                               <div className="truncate">
                                 📍 {item.location}
@@ -799,9 +883,11 @@ export default function HomePage() {
                                 {item.category}
                               </div>
                             )}
+
                           </div>
 
                           <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
+
                             <span className="text-xs text-gray-400">
                               {new Date(
                                 item.created_at
@@ -811,23 +897,32 @@ export default function HomePage() {
                             <span className="text-sm font-bold">
                               View listing →
                             </span>
+
                           </div>
+
                         </div>
                       </Link>
+
                     </article>
                   );
                 })}
+
               </div>
             )}
+
           </div>
         </div>
       </section>
 
       {/* SELL CTA */}
       <section className="w-full px-4 pb-10 sm:px-6 lg:px-8">
+
         <div className="rounded-3xl bg-black px-6 py-10 text-white sm:px-10">
+
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+
             <div>
+
               <h2 className="text-2xl font-black sm:text-3xl">
                 Have something to sell?
               </h2>
@@ -835,6 +930,7 @@ export default function HomePage() {
               <p className="mt-2 max-w-2xl text-gray-300">
                 Create your listing and reach buyers on Sellio.
               </p>
+
             </div>
 
             <Link
@@ -843,23 +939,32 @@ export default function HomePage() {
             >
               + Sell something
             </Link>
+
           </div>
         </div>
       </section>
 
       {/* FOOTER */}
       <footer className="border-t border-gray-200 bg-white">
+
         <div className="w-full px-4 py-8 sm:px-6 lg:px-8">
+
           <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+
             <div>
-              <div className="text-2xl font-black">Sellio</div>
+
+              <div className="text-2xl font-black">
+                Sellio
+              </div>
 
               <p className="mt-1 text-sm text-gray-500">
                 Buy and sell anything, simply.
               </p>
+
             </div>
 
             <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm font-medium text-gray-600">
+
               <Link
                 href="/profile"
                 className="hover:text-black"
@@ -894,14 +999,18 @@ export default function HomePage() {
               >
                 Sell
               </Link>
+
             </div>
+
           </div>
 
           <div className="mt-6 border-t border-gray-100 pt-5 text-xs text-gray-400">
             © {new Date().getFullYear()} Sellio. All rights reserved.
           </div>
+
         </div>
       </footer>
+
     </main>
   );
 }
