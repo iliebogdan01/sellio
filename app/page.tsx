@@ -40,6 +40,7 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [favourites, setFavourites] = useState<number[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -116,7 +117,9 @@ export default function HomePage() {
         .eq("user_id", userId)
         .eq("listing_id", listingId);
 
-      setFavourites((prev) => prev.filter((id) => id !== listingId));
+      setFavourites((prev) =>
+        prev.filter((id) => id !== listingId)
+      );
     } else {
       await supabase.from("favourites").insert({
         user_id: userId,
@@ -138,7 +141,8 @@ export default function HomePage() {
         listing.location?.toLowerCase().includes(searchText);
 
       const matchesCategory =
-        !selectedCategory || listing.category === selectedCategory;
+        !selectedCategory ||
+        listing.category === selectedCategory;
 
       return matchesSearch && matchesCategory;
     });
@@ -160,6 +164,7 @@ export default function HomePage() {
           {/* LOGO */}
           <Link
             href="/"
+            onClick={() => setMobileMenuOpen(false)}
             className="shrink-0 text-2xl font-black tracking-tight sm:text-3xl"
           >
             Sellio
@@ -185,22 +190,22 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* HEADER ACTIONS */}
-          <div className="flex shrink-0 items-center gap-1 sm:gap-3">
+          {/* DESKTOP HEADER ACTIONS */}
+          <div className="hidden shrink-0 items-center gap-2 sm:flex">
             {/* FAVOURITES */}
             <Link
               href="/favourites"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-lg transition hover:bg-gray-100 sm:h-auto sm:w-auto sm:rounded-lg sm:px-3 sm:py-2"
+              className="flex h-10 items-center justify-center rounded-lg border border-gray-300 px-3 text-lg transition hover:bg-gray-100 sm:h-auto sm:text-sm"
               title="Favourites"
             >
               ❤️
-              <span className="hidden sm:ml-1 sm:inline">Favourites</span>
+              <span className="ml-1">Favourites</span>
             </Link>
 
             {/* MY LISTINGS */}
             <Link
               href="/my-listings"
-              className="hidden rounded-lg px-3 py-2 text-sm font-semibold transition hover:bg-gray-100 md:block"
+              className="rounded-lg px-3 py-2 text-sm font-semibold transition hover:bg-gray-100"
             >
               My Listings
             </Link>
@@ -208,7 +213,7 @@ export default function HomePage() {
             {/* MESSAGES */}
             <Link
               href="/messages"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 sm:h-auto sm:w-auto sm:rounded-lg sm:border-0"
+              className="flex h-10 items-center justify-center rounded-lg border border-gray-300 px-3 transition hover:bg-gray-100"
               title="Messages"
             >
               <MessageBadge />
@@ -217,30 +222,101 @@ export default function HomePage() {
             {/* PROFILE */}
             <Link
               href="/profile"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-lg transition hover:bg-gray-100 sm:h-auto sm:w-auto sm:rounded-lg sm:px-3 sm:py-2"
+              className="flex h-10 items-center justify-center rounded-lg border border-gray-300 px-3 text-lg transition hover:bg-gray-100"
               title="Profile"
             >
               👤
-              <span className="hidden sm:ml-1 sm:inline">Profile</span>
+              <span className="ml-1 text-sm">Profile</span>
             </Link>
 
-            {/* SELL DESKTOP */}
+            {/* SELL */}
             <Link
               href="/sell"
-              className="hidden rounded-lg bg-black px-5 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800 sm:flex"
-            >
-              + Sell
-            </Link>
-
-            {/* SELL MOBILE */}
-            <Link
-              href="/sell"
-              className="flex h-10 items-center justify-center rounded-lg bg-black px-3 text-sm font-bold text-white sm:hidden"
+              className="flex rounded-lg bg-black px-5 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800"
             >
               + Sell
             </Link>
           </div>
+
+          {/* MOBILE MENU BUTTON */}
+          <button
+            type="button"
+            onClick={() =>
+              setMobileMenuOpen((current) => !current)
+            }
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 text-2xl transition hover:bg-gray-100 sm:hidden"
+            aria-label="Open menu"
+            aria-expanded={mobileMenuOpen}
+          >
+            {mobileMenuOpen ? "✕" : "☰"}
+          </button>
         </div>
+
+        {/* MOBILE MENU */}
+        {mobileMenuOpen && (
+          <div className="border-t border-gray-200 bg-white px-3 py-3 shadow-lg sm:hidden">
+            <div className="grid grid-cols-2 gap-2">
+              {/* HOME */}
+              <Link
+                href="/"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold transition hover:bg-gray-100"
+              >
+                🏠
+                <span>Home</span>
+              </Link>
+
+              {/* MY LISTINGS */}
+              <Link
+                href="/my-listings"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold transition hover:bg-gray-100"
+              >
+                📋
+                <span>My Listings</span>
+              </Link>
+
+              {/* FAVOURITES */}
+              <Link
+                href="/favourites"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold transition hover:bg-gray-100"
+              >
+                ❤️
+                <span>Favourites</span>
+              </Link>
+
+              {/* MESSAGES */}
+              <Link
+                href="/messages"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold transition hover:bg-gray-100"
+              >
+                💬
+                <span>Messages</span>
+              </Link>
+
+              {/* PROFILE */}
+              <Link
+                href="/profile"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold transition hover:bg-gray-100"
+              >
+                👤
+                <span>Profile</span>
+              </Link>
+
+              {/* SELL */}
+              <Link
+                href="/sell"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 text-sm font-bold text-white transition hover:bg-gray-800"
+              >
+                + Sell
+              </Link>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* CATEGORIES */}
@@ -258,7 +334,9 @@ export default function HomePage() {
               }`}
             >
               <span className="text-2xl">🔥</span>
-              <span className="mt-1 text-xs font-semibold">All</span>
+              <span className="mt-1 text-xs font-semibold">
+                All
+              </span>
             </button>
 
             {/* CATEGORIES */}
@@ -268,7 +346,9 @@ export default function HomePage() {
                 type="button"
                 onClick={() =>
                   setSelectedCategory(
-                    selectedCategory === category.name ? "" : category.name
+                    selectedCategory === category.name
+                      ? ""
+                      : category.name
                   )
                 }
                 className={`flex min-w-[110px] shrink-0 flex-col items-center justify-center rounded-xl border p-3 text-center transition sm:min-w-0 ${
@@ -277,7 +357,9 @@ export default function HomePage() {
                     : "border-gray-200 bg-white hover:bg-gray-50"
                 }`}
               >
-                <span className="text-2xl">{category.icon}</span>
+                <span className="text-2xl">
+                  {category.icon}
+                </span>
 
                 <span className="mt-1 text-xs font-semibold">
                   {category.name}
@@ -333,12 +415,16 @@ export default function HomePage() {
         ) : (
           <div className="grid w-full grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {filteredListings.map((listing) => {
-              const favourite = favourites.includes(listing.id);
+              const favourite = favourites.includes(
+                listing.id
+              );
+
               const promoted = isPromoted(listing);
 
               const image =
                 listing.image ||
-                (listing.images && listing.images.length > 0
+                (listing.images &&
+                listing.images.length > 0
                   ? listing.images[0]
                   : null);
 
@@ -374,7 +460,9 @@ export default function HomePage() {
                   {/* FAVOURITE */}
                   <button
                     type="button"
-                    onClick={() => toggleFavourite(listing.id)}
+                    onClick={() =>
+                      toggleFavourite(listing.id)
+                    }
                     className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white text-xl shadow-md transition hover:scale-105"
                     title={
                       favourite
@@ -395,7 +483,10 @@ export default function HomePage() {
                     </Link>
 
                     <div className="mt-2 text-xl font-black">
-                      £{Number(listing.price).toLocaleString()}
+                      £
+                      {Number(
+                        listing.price
+                      ).toLocaleString()}
                     </div>
 
                     {listing.location && (
@@ -450,15 +541,31 @@ export default function HomePage() {
           </div>
 
           <div className="flex gap-4">
-            <Link href="/profile" className="hover:text-black">
+            <Link
+              href="/profile"
+              className="hover:text-black"
+            >
               Profile
             </Link>
 
-            <Link href="/messages" className="hover:text-black">
+            <Link
+              href="/messages"
+              className="hover:text-black"
+            >
               Messages
             </Link>
 
-            <Link href="/sell" className="hover:text-black">
+            <Link
+              href="/my-listings"
+              className="hover:text-black"
+            >
+              My Listings
+            </Link>
+
+            <Link
+              href="/sell"
+              className="hover:text-black"
+            >
               Sell
             </Link>
           </div>
