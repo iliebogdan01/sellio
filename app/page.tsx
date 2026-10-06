@@ -75,11 +75,7 @@ export default function HomePage() {
 
       if (error) {
         console.error("Could not load listings:", error);
-
-        setErrorMessage(
-          error.message || "Could not load listings."
-        );
-
+        setErrorMessage(error.message || "Could not load listings.");
         setListings([]);
         return;
       }
@@ -125,8 +121,7 @@ export default function HomePage() {
 
       setFavourites(
         (data || []).map(
-          (item: { listing_id: number }) =>
-            Number(item.listing_id)
+          (item: { listing_id: number }) => Number(item.listing_id)
         )
       );
     } catch (error) {
@@ -183,10 +178,7 @@ export default function HomePage() {
           return;
         }
 
-        setFavourites((current) => [
-          ...current,
-          listingId,
-        ]);
+        setFavourites((current) => [...current, listingId]);
       }
     } catch (error) {
       console.error("Favourite error:", error);
@@ -199,8 +191,7 @@ export default function HomePage() {
     }
 
     return (
-      new Date(listing.promoted_until).getTime() >
-      Date.now()
+      new Date(listing.promoted_until).getTime() > Date.now()
     );
   }
 
@@ -223,21 +214,10 @@ export default function HomePage() {
       difference / (1000 * 60 * 60 * 24)
     );
 
-    if (minutes < 1) {
-      return "Just now";
-    }
-
-    if (minutes < 60) {
-      return `${minutes} min ago`;
-    }
-
-    if (hours < 24) {
-      return `${hours}h ago`;
-    }
-
-    if (days < 7) {
-      return `${days}d ago`;
-    }
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
 
     return listingDate.toLocaleDateString("en-GB", {
       day: "2-digit",
@@ -249,61 +229,42 @@ export default function HomePage() {
   const filteredListings = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    const matchingListings = listings.filter(
-      (listing) => {
-        const title = String(
-          listing.title || ""
-        ).toLowerCase();
+    const matchingListings = listings.filter((listing) => {
+      const title = String(listing.title || "").toLowerCase();
+      const location = String(listing.location || "").toLowerCase();
+      const listingCategory = String(
+        listing.category || ""
+      ).toLowerCase();
+      const description = String(
+        listing.description || ""
+      ).toLowerCase();
 
-        const location = String(
-          listing.location || ""
-        ).toLowerCase();
+      const matchesSearch =
+        !query ||
+        title.includes(query) ||
+        location.includes(query) ||
+        listingCategory.includes(query) ||
+        description.includes(query);
 
-        const listingCategory = String(
-          listing.category || ""
-        ).toLowerCase();
+      const matchesCategory =
+        category === "All" ||
+        listing.category === category;
 
-        const description = String(
-          listing.description || ""
-        ).toLowerCase();
+      return matchesSearch && matchesCategory;
+    });
 
-        const matchesSearch =
-          !query ||
-          title.includes(query) ||
-          location.includes(query) ||
-          listingCategory.includes(query) ||
-          description.includes(query);
+    return [...matchingListings].sort((a, b) => {
+      const aPromoted = isPromoted(a);
+      const bPromoted = isPromoted(b);
 
-        const matchesCategory =
-          category === "All" ||
-          listing.category === category;
+      if (aPromoted && !bPromoted) return -1;
+      if (!aPromoted && bPromoted) return 1;
 
-        return (
-          matchesSearch &&
-          matchesCategory
-        );
-      }
-    );
-
-    return [...matchingListings].sort(
-      (a, b) => {
-        const aPromoted = isPromoted(a);
-        const bPromoted = isPromoted(b);
-
-        if (aPromoted && !bPromoted) {
-          return -1;
-        }
-
-        if (!aPromoted && bPromoted) {
-          return 1;
-        }
-
-        return (
-          new Date(b.created_at).getTime() -
-          new Date(a.created_at).getTime()
-        );
-      }
-    );
+      return (
+        new Date(b.created_at).getTime() -
+        new Date(a.created_at).getTime()
+      );
+    });
   }, [listings, search, category]);
 
   function performSearch() {
@@ -317,16 +278,12 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f2f2f2] text-[#171717] flex flex-col">
+    <main className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#f2f2f2] text-[#171717] flex flex-col">
 
-      {/* HEADER */}
+      {/* HEADER — unchanged */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-
         <div className="w-full px-3 sm:px-5 lg:px-7 py-3">
-
           <div className="flex items-center gap-3">
-
-            {/* LOGO */}
             <Link
               href="/"
               className="shrink-0 text-2xl sm:text-3xl font-black tracking-tight text-black hover:opacity-70 transition"
@@ -334,11 +291,8 @@ export default function HomePage() {
               Sellio
             </Link>
 
-            {/* SEARCH */}
             <div className="flex-1 max-w-4xl mx-auto">
-
               <div className="flex items-center bg-[#f3f3f3] border border-gray-300 rounded-xl overflow-hidden focus-within:border-black focus-within:bg-white transition">
-
                 <span className="pl-3 text-lg text-gray-500">
                   🔍
                 </span>
@@ -365,15 +319,10 @@ export default function HomePage() {
                 >
                   Search
                 </button>
-
               </div>
-
             </div>
 
-            {/* ACTIONS */}
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-
-              {/* FAVOURITES */}
               <Link
                 href="/favourites"
                 title="Favourites"
@@ -383,7 +332,6 @@ export default function HomePage() {
                 ❤️
               </Link>
 
-              {/* MY LISTINGS */}
               <Link
                 href="/my-listings"
                 title="My Listings"
@@ -394,10 +342,8 @@ export default function HomePage() {
                 <span>My Listings</span>
               </Link>
 
-              {/* MESSAGES */}
               <MessageBadge />
 
-              {/* PROFILE */}
               <Link
                 href="/profile"
                 title="Profile"
@@ -407,7 +353,6 @@ export default function HomePage() {
                 👤
               </Link>
 
-              {/* SELL DESKTOP */}
               <Link
                 href="/sell"
                 className="hidden sm:flex bg-black text-white px-6 py-2.5 rounded-xl font-black text-sm hover:bg-[#222] transition"
@@ -415,52 +360,39 @@ export default function HomePage() {
                 + Sell
               </Link>
 
-              {/* SELL MOBILE */}
               <Link
                 href="/sell"
                 className="sm:hidden flex bg-black text-white w-9 h-9 items-center justify-center rounded-xl font-black text-lg"
               >
                 +
               </Link>
-
             </div>
-
           </div>
-
         </div>
       </header>
 
       {/* MOBILE MY LISTINGS */}
       <div className="sm:hidden bg-white border-b border-gray-200 px-3 py-2">
-
         <Link
           href="/my-listings"
           className="flex items-center justify-center gap-2 w-full bg-[#f1f1f1] hover:bg-gray-200 rounded-xl py-2.5 font-bold text-sm transition"
         >
           📋 My Listings
         </Link>
-
       </div>
 
       {/* CATEGORIES */}
-      <section className="bg-white border-b border-gray-200">
-
+      <section className="bg-white border-b border-gray-200 w-full overflow-hidden">
         <div className="w-full px-3 sm:px-5 lg:px-7 py-3">
-
           <div className="flex gap-2 overflow-x-auto pb-1">
-
             {categories.map((item) => {
-
-              const active =
-                category === item.name;
+              const active = category === item.name;
 
               return (
                 <button
                   key={item.name}
                   type="button"
-                  onClick={() =>
-                    setCategory(item.name)
-                  }
+                  onClick={() => setCategory(item.name)}
                   className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${
                     active
                       ? "bg-black text-white"
@@ -472,46 +404,34 @@ export default function HomePage() {
                 </button>
               );
             })}
-
           </div>
-
         </div>
       </section>
 
       {/* MAIN */}
-      <div className="flex-1">
-
-        <div className="w-full px-3 sm:px-5 lg:px-7">
+      <div className="flex-1 w-full max-w-[100vw] overflow-hidden">
+        <div className="w-full px-0 sm:px-5 lg:px-7">
 
           {/* TOP AD */}
-          <div className="py-3 sm:py-4">
-
+          <div className="px-3 sm:px-0 py-3 sm:py-4">
             <div className="h-16 sm:h-20 bg-white border border-gray-200 rounded-xl flex items-center justify-center">
-
               <div className="text-center">
-
                 <p className="text-[9px] uppercase tracking-[0.25em] font-bold text-gray-400">
                   Advertisement
                 </p>
-
                 <p className="text-xs text-gray-500 mt-1">
                   Your advertisement could appear here
                 </p>
-
               </div>
-
             </div>
-
           </div>
 
           {/* CONTENT */}
           <div className="pb-8">
 
             {/* LISTINGS HEADER */}
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
-
+            <div className="px-3 sm:px-0 flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
               <div>
-
                 <p className="text-xs uppercase tracking-[0.2em] font-bold text-gray-400">
                   Sellio Marketplace
                 </p>
@@ -521,7 +441,6 @@ export default function HomePage() {
                     ? "Listings"
                     : "Latest Listings"}
                 </h1>
-
               </div>
 
               <p className="text-sm text-gray-500">
@@ -530,15 +449,12 @@ export default function HomePage() {
                   ? "listing"
                   : "listings"}
               </p>
-
             </div>
 
             {/* ACTIVE FILTER */}
             {(search || category !== "All") && (
-              <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-
+              <div className="mx-3 sm:mx-0 bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <p className="text-sm text-gray-600">
-
                   {search && (
                     <>
                       Results for{" "}
@@ -556,7 +472,6 @@ export default function HomePage() {
                       </strong>
                     </>
                   )}
-
                 </p>
 
                 <button
@@ -566,45 +481,32 @@ export default function HomePage() {
                 >
                   Clear filters
                 </button>
-
               </div>
             )}
 
             {/* ERROR */}
             {errorMessage && (
-              <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
-
+              <div className="mx-3 sm:mx-0 mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
                 <p className="font-bold">
                   Could not load listings
                 </p>
-
                 <p className="text-sm mt-1">
                   {errorMessage}
                 </p>
-
               </div>
             )}
 
             {/* LOADING */}
             {loading ? (
-
-              <div className="bg-white border border-gray-200 rounded-xl py-20 text-center">
-
+              <div className="mx-3 sm:mx-0 bg-white border border-gray-200 rounded-xl py-20 text-center">
                 <div className="w-10 h-10 border-4 border-gray-200 border-t-black rounded-full animate-spin mx-auto" />
-
                 <p className="text-gray-500 mt-4">
                   Loading listings...
                 </p>
-
               </div>
-
             ) : filteredListings.length === 0 ? (
-
-              <div className="bg-white border border-gray-200 rounded-xl py-20 px-6 text-center">
-
-                <div className="text-6xl">
-                  📦
-                </div>
+              <div className="mx-3 sm:mx-0 bg-white border border-gray-200 rounded-xl py-20 px-6 text-center">
+                <div className="text-6xl">📦</div>
 
                 <h2 className="text-2xl font-black mt-5">
                   No listings found
@@ -627,21 +529,15 @@ export default function HomePage() {
                     Clear Filters
                   </button>
                 )}
-
               </div>
-
             ) : (
-
-              /* LISTINGS */
-              <div className="space-y-4">
+              <div className="w-full space-y-4">
 
                 {filteredListings.map((listing) => {
-
-                  const promoted =
-                    isPromoted(listing);
-
-                  const isFavourite =
-                    favourites.includes(listing.id);
+                  const promoted = isPromoted(listing);
+                  const isFavourite = favourites.includes(
+                    listing.id
+                  );
 
                   return (
                     <Link
@@ -649,49 +545,39 @@ export default function HomePage() {
                       href={`/listing?id=${encodeURIComponent(
                         String(listing.id)
                       )}`}
-                      className={`group block bg-white rounded-2xl border overflow-hidden transition-all hover:shadow-lg ${
+                      className={`group block w-full bg-white rounded-2xl border overflow-hidden transition-all hover:shadow-lg ${
                         promoted
                           ? "border-black"
                           : "border-gray-200 hover:border-gray-400"
                       }`}
                     >
 
-                      {/* ========================= */}
-                      {/* MOBILE LISTING CARD        */}
-                      {/* ========================= */}
+                      {/* MOBILE */}
+                      <div className="sm:hidden w-full">
 
-                      <div className="sm:hidden">
-
-                        {/* MOBILE IMAGE */}
+                        {/* IMAGE */}
                         <div className="relative w-full aspect-[4/3] bg-gray-100 overflow-hidden">
 
                           {listing.image ? (
-
                             <img
                               src={listing.image}
                               alt={
-                                listing.title ||
-                                "Listing"
+                                listing.title || "Listing"
                               }
                               className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
                             />
-
                           ) : (
-
                             <div className="absolute inset-0 flex items-center justify-center text-5xl bg-gray-100">
                               📷
                             </div>
-
                           )}
 
-                          {/* PROMOTED */}
                           {promoted && (
                             <span className="absolute top-3 left-3 bg-black text-white text-[10px] uppercase tracking-wide font-black px-3 py-1.5 rounded-lg shadow-md">
                               🚀 Promoted
                             </span>
                           )}
 
-                          {/* FAVOURITE */}
                           <button
                             type="button"
                             onClick={(event) =>
@@ -716,21 +602,15 @@ export default function HomePage() {
                                 : "Add to favourites"
                             }
                           >
-                            {isFavourite
-                              ? "❤️"
-                              : "♡"}
+                            {isFavourite ? "❤️" : "♡"}
                           </button>
-
                         </div>
 
-                        {/* MOBILE INFO */}
-                        <div className="p-4">
-
-                          {/* CATEGORY + DATE */}
+                        {/* INFO */}
+                        <div className="w-full p-4">
                           <div className="flex items-center justify-between gap-3">
-
                             {listing.category ? (
-                              <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold truncate">
+                              <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold truncate min-w-0">
                                 {listing.category}
                               </p>
                             ) : (
@@ -742,42 +622,33 @@ export default function HomePage() {
                                 listing.created_at
                               )}
                             </span>
-
                           </div>
 
-                          {/* TITLE */}
-                          <h2 className="font-black text-lg leading-tight mt-2 line-clamp-2 group-hover:underline">
+                          <h2 className="font-black text-lg leading-tight mt-2 line-clamp-2">
                             {listing.title ||
                               "Untitled listing"}
                           </h2>
 
-                          {/* PRICE */}
                           <p className="text-2xl font-black mt-3">
                             £
                             {Number(
                               listing.price || 0
-                            ).toLocaleString(
-                              "en-GB"
-                            )}
+                            ).toLocaleString("en-GB")}
                           </p>
 
-                          {/* LOCATION */}
                           {listing.location && (
                             <p className="text-sm text-gray-500 mt-3 truncate">
                               📍 {listing.location}
                             </p>
                           )}
 
-                          {/* DESCRIPTION */}
                           {listing.description && (
                             <p className="text-sm text-gray-500 mt-2 line-clamp-2">
                               {listing.description}
                             </p>
                           )}
 
-                          {/* VIEW */}
                           <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-
                             <span className="text-xs text-gray-400">
                               Sellio Marketplace
                             </span>
@@ -785,24 +656,15 @@ export default function HomePage() {
                             <span className="text-sm font-bold text-black">
                               View →
                             </span>
-
                           </div>
-
                         </div>
-
                       </div>
 
-                      {/* ========================= */}
-                      {/* DESKTOP LISTING CARD      */}
-                      {/* ========================= */}
-
+                      {/* DESKTOP — unchanged */}
                       <div className="hidden sm:flex min-h-[230px] lg:min-h-[250px]">
-
-                        {/* IMAGE */}
                         <div className="relative w-[280px] md:w-[340px] lg:w-[390px] xl:w-[430px] shrink-0 bg-gray-100 overflow-hidden">
 
                           {listing.image ? (
-
                             <img
                               src={listing.image}
                               alt={
@@ -811,13 +673,10 @@ export default function HomePage() {
                               }
                               className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
                             />
-
                           ) : (
-
                             <div className="absolute inset-0 flex items-center justify-center text-5xl bg-gray-100">
                               📷
                             </div>
-
                           )}
 
                           {promoted && (
@@ -825,16 +684,11 @@ export default function HomePage() {
                               🚀 Promoted
                             </span>
                           )}
-
                         </div>
 
-                        {/* INFO */}
                         <div className="flex-1 min-w-0 p-6 lg:p-7 flex flex-col">
-
                           <div className="flex items-start justify-between gap-4">
-
                             <div className="min-w-0">
-
                               {listing.category && (
                                 <p className="text-xs uppercase tracking-wider text-gray-400 font-bold truncate">
                                   {listing.category}
@@ -845,7 +699,6 @@ export default function HomePage() {
                                 {listing.title ||
                                   "Untitled listing"}
                               </h2>
-
                             </div>
 
                             <button
@@ -872,39 +725,28 @@ export default function HomePage() {
                                   : "Add to favourites"
                               }
                             >
-                              {isFavourite
-                                ? "❤️"
-                                : "♡"}
+                              {isFavourite ? "❤️" : "♡"}
                             </button>
-
                           </div>
 
-                          {/* PRICE */}
                           <p className="text-3xl lg:text-4xl font-black mt-4">
                             £
                             {Number(
                               listing.price || 0
-                            ).toLocaleString(
-                              "en-GB"
-                            )}
+                            ).toLocaleString("en-GB")}
                           </p>
 
-                          {/* DESCRIPTION */}
                           {listing.description && (
                             <p className="text-sm lg:text-base text-gray-500 mt-3 line-clamp-3 max-w-4xl">
                               {listing.description}
                             </p>
                           )}
 
-                          {/* BOTTOM INFO */}
                           <div className="mt-auto pt-5 flex items-center justify-between gap-3">
-
                             <div className="flex items-center gap-3 text-sm text-gray-500 min-w-0">
-
                               {listing.location && (
                                 <span className="truncate">
-                                  📍{" "}
-                                  {listing.location}
+                                  📍 {listing.location}
                                 </span>
                               )}
 
@@ -917,35 +759,26 @@ export default function HomePage() {
                                   listing.created_at
                                 )}
                               </span>
-
                             </div>
 
                             <span className="text-sm font-bold text-gray-400 group-hover:text-black transition">
                               View listing →
                             </span>
-
                           </div>
-
                         </div>
-
                       </div>
-
                     </Link>
                   );
                 })}
-
               </div>
             )}
 
           </div>
 
           {/* CTA */}
-          <section className="pb-8">
-
+          <section className="px-3 sm:px-0 pb-8">
             <div className="bg-black text-white rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-5">
-
               <div>
-
                 <p className="text-xl sm:text-2xl font-black">
                   Have something to sell?
                 </p>
@@ -953,7 +786,6 @@ export default function HomePage() {
                 <p className="text-gray-400 text-sm mt-1">
                   Create a listing and reach buyers on Sellio.
                 </p>
-
               </div>
 
               <Link
@@ -962,18 +794,13 @@ export default function HomePage() {
               >
                 + Create Listing
               </Link>
-
             </div>
-
           </section>
 
           {/* BOTTOM AD */}
-          <section className="pb-8">
-
+          <section className="px-3 sm:px-0 pb-8">
             <div className="bg-white border border-gray-200 rounded-xl h-24 sm:h-28 flex items-center justify-center text-center">
-
               <div>
-
                 <p className="text-[9px] uppercase tracking-[0.2em] font-bold text-gray-400">
                   Advertisement
                 </p>
@@ -981,26 +808,19 @@ export default function HomePage() {
                 <p className="text-gray-500 text-xs font-semibold mt-1">
                   Your advertisement could appear here
                 </p>
-
               </div>
-
             </div>
-
           </section>
 
         </div>
-
       </div>
 
       {/* FOOTER */}
       <footer className="bg-black text-gray-400">
-
         <div className="w-full px-3 sm:px-5 lg:px-7 py-8">
-
           <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
 
             <div className="text-center sm:text-left">
-
               <p className="text-white text-xl font-black">
                 Sellio
               </p>
@@ -1008,22 +828,14 @@ export default function HomePage() {
               <p className="text-xs mt-1 text-gray-500">
                 Buy. Sell. Discover.
               </p>
-
             </div>
 
             <div className="flex flex-wrap justify-center gap-5 text-sm">
-
-              <Link
-                href="/"
-                className="hover:text-white transition"
-              >
+              <Link href="/" className="hover:text-white transition">
                 Home
               </Link>
 
-              <Link
-                href="/sell"
-                className="hover:text-white transition"
-              >
+              <Link href="/sell" className="hover:text-white transition">
                 Sell
               </Link>
 
@@ -1054,13 +866,10 @@ export default function HomePage() {
               >
                 Profile
               </Link>
-
             </div>
 
           </div>
-
         </div>
-
       </footer>
 
     </main>
