@@ -16,862 +16,451 @@ type Listing = {
   images: string[] | null;
   user_id: string;
   created_at: string;
-  promoted: boolean;
+  promoted: boolean | null;
   promoted_until: string | null;
 };
 
 const categories = [
-  { name: "All", icon: "✨" },
   { name: "Cars & Vehicles", icon: "🚗" },
   { name: "Property", icon: "🏠" },
   { name: "Electronics", icon: "📱" },
   { name: "Fashion", icon: "👕" },
-  { name: "Home & Garden", icon: "🛋️" },
+  { name: "Home & Garden", icon: "🏡" },
   { name: "Gaming", icon: "🎮" },
   { name: "Baby & Kids", icon: "🧸" },
   { name: "Services", icon: "🔧" },
 ];
 
 export default function HomePage() {
+  const supabase = createClient();
+
   const [listings, setListings] = useState<Listing[]>([]);
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("All");
   const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
   const [favourites, setFavourites] = useState<number[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    loadUser();
     loadListings();
-    loadFavourites();
   }, []);
 
+  async function loadUser() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setUserId(null);
+      return;
+    }
+
+    setUserId(user.id);
+    loadFavourites(user.id);
+  }
+
+  async function loadFavourites(id: string) {
+    const { data } = await supabase
+      .from("favourites")
+      .select("listing_id")
+      .eq("user_id", id);
+
+    if (data) {
+      setFavourites(data.map((item) => Number(item.listing_id)));
+    }
+  }
+
   async function loadListings() {
-    try {
-      setLoading(true);
-      setErrorMessage("");
+    setLoading(true);
 
-      const supabase = createClient();
+    const { data, error } = await supabase
+      .from("listings")
+      .select(
+        `
+        id,
+        title,
+        price,
+        location,
+        category,
+        description,
+        image,
+        images,
+        user_id,
+        created_at,
+        promoted,
+        promoted_until
+      `
+      )
+      .order("created_at", { ascending: false });
 
-      const { data, error } = await supabase
-        .from("listings")
-        .select(`
-          id,
-          title,
-          price,
-          location,
-          category,
-          description,
-          image,
-          images,
-          user_id,
-          created_at,
-          promoted,
-          promoted_until
-        `)
-        .order("created_at", {
-          ascending: false,
-        });
-
-      if (error) {
-        console.error("Could not load listings:", error);
-        setErrorMessage(error.message || "Could not load listings.");
-        setListings([]);
-        return;
-      }
-
-      setListings((data || []) as Listing[]);
-    } catch (error) {
-      console.error("Load listings error:", error);
-
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong while loading listings."
-      );
-
-      setListings([]);
-    } finally {
-      setLoading(false);
+    if (!error && data) {
+      setListings(data as Listing[]);
     }
+
+    setLoading(false);
   }
 
-  async function loadFavourites() {
-    try {
-      const supabase = createClient();
+  async function toggleFavourite(listingId: number) {
+    if (!userId) {
+      window.location.href = "/login";
+      return;
+    }
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    const alreadyFavourite = favourites.includes(listingId);
 
-      if (!user) {
-        setFavourites([]);
-        return;
-      }
-
-      const { data, error } = await supabase
+    if (alreadyFavourite) {
+      await supabase
         .from("favourites")
-        .select("listing_id")
-        .eq("user_id", user.id);
+        .delete()
+        .eq("user_id", userId)
+        .eq("listing_id", listingId);
 
-      if (error) {
-        console.error("Could not load favourites:", error);
-        return;
-      }
+      setFavourites((prev) => prev.filter((id) => id !== listingId));
+    } else {
+      await supabase.from("favourites").insert({
+        user_id: userId,
+        listing_id: listingId,
+      });
 
-      setFavourites(
-        (data || []).map(
-          (item: { listing_id: number }) => Number(item.listing_id)
-        )
-      );
-    } catch (error) {
-      console.error("Favourite loading error:", error);
+      setFavourites((prev) => [...prev, listingId]);
     }
-  }
-
-  async function toggleFavourite(
-    event: React.MouseEvent<HTMLButtonElement>,
-    listingId: number
-  ) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    try {
-      const supabase = createClient();
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        window.location.href = "/login";
-        return;
-      }
-
-      const isFavourite = favourites.includes(listingId);
-
-      if (isFavourite) {
-        const { error } = await supabase
-          .from("favourites")
-          .delete()
-          .eq("user_id", user.id)
-          .eq("listing_id", listingId);
-
-        if (error) {
-          console.error(error);
-          return;
-        }
-
-        setFavourites((current) =>
-          current.filter((id) => id !== listingId)
-        );
-      } else {
-        const { error } = await supabase
-          .from("favourites")
-          .insert({
-            user_id: user.id,
-            listing_id: listingId,
-          });
-
-        if (error) {
-          console.error(error);
-          return;
-        }
-
-        setFavourites((current) => [...current, listingId]);
-      }
-    } catch (error) {
-      console.error("Favourite error:", error);
-    }
-  }
-
-  function isPromoted(listing: Listing) {
-    if (!listing.promoted || !listing.promoted_until) {
-      return false;
-    }
-
-    return (
-      new Date(listing.promoted_until).getTime() > Date.now()
-    );
-  }
-
-  function formatDate(date: string) {
-    const listingDate = new Date(date);
-    const now = new Date();
-
-    const difference =
-      now.getTime() - listingDate.getTime();
-
-    const minutes = Math.floor(
-      difference / (1000 * 60)
-    );
-
-    const hours = Math.floor(
-      difference / (1000 * 60 * 60)
-    );
-
-    const days = Math.floor(
-      difference / (1000 * 60 * 60 * 24)
-    );
-
-    if (minutes < 1) return "Just now";
-    if (minutes < 60) return `${minutes} min ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
-
-    return listingDate.toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
   }
 
   const filteredListings = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const searchText = search.toLowerCase().trim();
 
-    const matchingListings = listings.filter((listing) => {
-      const title = String(listing.title || "").toLowerCase();
-      const location = String(listing.location || "").toLowerCase();
-      const listingCategory = String(
-        listing.category || ""
-      ).toLowerCase();
-      const description = String(
-        listing.description || ""
-      ).toLowerCase();
-
+    return listings.filter((listing) => {
       const matchesSearch =
-        !query ||
-        title.includes(query) ||
-        location.includes(query) ||
-        listingCategory.includes(query) ||
-        description.includes(query);
+        !searchText ||
+        listing.title.toLowerCase().includes(searchText) ||
+        listing.description?.toLowerCase().includes(searchText) ||
+        listing.location?.toLowerCase().includes(searchText);
 
       const matchesCategory =
-        category === "All" ||
-        listing.category === category;
+        !selectedCategory || listing.category === selectedCategory;
 
       return matchesSearch && matchesCategory;
     });
+  }, [listings, search, selectedCategory]);
 
-    return [...matchingListings].sort((a, b) => {
-      const aPromoted = isPromoted(a);
-      const bPromoted = isPromoted(b);
+  const isPromoted = (listing: Listing) => {
+    if (!listing.promoted) return false;
 
-      if (aPromoted && !bPromoted) return -1;
-      if (!aPromoted && bPromoted) return 1;
+    if (!listing.promoted_until) return true;
 
-      return (
-        new Date(b.created_at).getTime() -
-        new Date(a.created_at).getTime()
-      );
-    });
-  }, [listings, search, category]);
-
-  function performSearch() {
-    setSearch(searchInput.trim());
-  }
-
-  function clearSearch() {
-    setSearchInput("");
-    setSearch("");
-    setCategory("All");
-  }
+    return new Date(listing.promoted_until) > new Date();
+  };
 
   return (
-    <main className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#f2f2f2] text-[#171717] flex flex-col">
+    <main className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-white text-black">
+      {/* HEADER */}
+      <header className="sticky top-0 z-50 w-full border-b bg-white">
+        <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-2 px-3 sm:h-20 sm:gap-4 sm:px-6 lg:px-8">
+          {/* LOGO */}
+          <Link
+            href="/"
+            className="shrink-0 text-2xl font-black tracking-tight sm:text-3xl"
+          >
+            Sellio
+          </Link>
 
-      {/* HEADER — unchanged */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="w-full px-3 sm:px-5 lg:px-7 py-3">
-          <div className="flex items-center gap-3">
+          {/* SEARCH */}
+          <div className="flex min-w-0 flex-1 items-center">
+            <div className="flex w-full items-center overflow-hidden rounded-full border border-gray-300 bg-gray-50">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search listings..."
+                className="min-w-0 flex-1 bg-transparent px-4 py-2.5 text-sm outline-none sm:px-5 sm:text-base"
+              />
+
+              <button
+                type="button"
+                className="flex h-10 w-10 shrink-0 items-center justify-center bg-black text-white sm:h-11 sm:w-12"
+              >
+                🔍
+              </button>
+            </div>
+          </div>
+
+          {/* HEADER ACTIONS */}
+          <div className="flex shrink-0 items-center gap-1 sm:gap-3">
+            {/* FAVOURITES */}
             <Link
-              href="/"
-              className="shrink-0 text-2xl sm:text-3xl font-black tracking-tight text-black hover:opacity-70 transition"
+              href="/favourites"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-lg transition hover:bg-gray-100 sm:h-auto sm:w-auto sm:rounded-lg sm:px-3 sm:py-2"
+              title="Favourites"
             >
-              Sellio
+              ❤️
+              <span className="hidden sm:ml-1 sm:inline">Favourites</span>
             </Link>
 
-            <div className="flex-1 max-w-4xl mx-auto">
-              <div className="flex items-center bg-[#f3f3f3] border border-gray-300 rounded-xl overflow-hidden focus-within:border-black focus-within:bg-white transition">
-                <span className="pl-3 text-lg text-gray-500">
-                  🔍
-                </span>
+            {/* MY LISTINGS */}
+            <Link
+              href="/my-listings"
+              className="hidden rounded-lg px-3 py-2 text-sm font-semibold transition hover:bg-gray-100 md:block"
+            >
+              My Listings
+            </Link>
 
-                <input
-                  type="text"
-                  value={searchInput}
-                  onChange={(event) =>
-                    setSearchInput(event.target.value)
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      performSearch();
-                    }
-                  }}
-                  placeholder="What are you looking for?"
-                  className="flex-1 min-w-0 bg-transparent px-3 py-3 outline-none text-sm"
-                />
-
-                <button
-                  type="button"
-                  onClick={performSearch}
-                  className="bg-black text-white px-4 sm:px-7 py-3 font-bold text-sm hover:bg-[#222] transition"
-                >
-                  Search
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-              <Link
-                href="/favourites"
-                title="Favourites"
-                aria-label="Favourites"
-                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 transition"
-              >
-                ❤️
-              </Link>
-
-              <Link
-                href="/my-listings"
-                title="My Listings"
-                aria-label="My Listings"
-                className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-100 transition font-bold text-sm"
-              >
-                📋
-                <span>My Listings</span>
-              </Link>
-
+            {/* MESSAGES */}
+            <Link
+              href="/messages"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 sm:h-auto sm:w-auto sm:rounded-lg sm:border-0"
+              title="Messages"
+            >
               <MessageBadge />
+            </Link>
 
-              <Link
-                href="/profile"
-                title="Profile"
-                aria-label="Profile"
-                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 transition"
-              >
-                👤
-              </Link>
+            {/* PROFILE */}
+            <Link
+              href="/profile"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-lg transition hover:bg-gray-100 sm:h-auto sm:w-auto sm:rounded-lg sm:px-3 sm:py-2"
+              title="Profile"
+            >
+              👤
+              <span className="hidden sm:ml-1 sm:inline">Profile</span>
+            </Link>
 
-              <Link
-                href="/sell"
-                className="hidden sm:flex bg-black text-white px-6 py-2.5 rounded-xl font-black text-sm hover:bg-[#222] transition"
-              >
-                + Sell
-              </Link>
+            {/* SELL DESKTOP */}
+            <Link
+              href="/sell"
+              className="hidden rounded-lg bg-black px-5 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800 sm:flex"
+            >
+              + Sell
+            </Link>
 
-              <Link
-                href="/sell"
-                className="sm:hidden flex bg-black text-white w-9 h-9 items-center justify-center rounded-xl font-black text-lg"
-              >
-                +
-              </Link>
-            </div>
+            {/* SELL MOBILE */}
+            <Link
+              href="/sell"
+              className="flex h-10 items-center justify-center rounded-lg bg-black px-3 text-sm font-bold text-white sm:hidden"
+            >
+              + Sell
+            </Link>
           </div>
         </div>
       </header>
 
-      {/* MOBILE MY LISTINGS */}
-      <div className="sm:hidden bg-white border-b border-gray-200 px-3 py-2">
-        <Link
-          href="/my-listings"
-          className="flex items-center justify-center gap-2 w-full bg-[#f1f1f1] hover:bg-gray-200 rounded-xl py-2.5 font-bold text-sm transition"
-        >
-          📋 My Listings
-        </Link>
-      </div>
-
       {/* CATEGORIES */}
-      <section className="bg-white border-b border-gray-200 w-full overflow-hidden">
-        <div className="w-full px-3 sm:px-5 lg:px-7 py-3">
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {categories.map((item) => {
-              const active = category === item.name;
+      <section className="w-full overflow-hidden border-b bg-white">
+        <div className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+          <div className="flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-4 sm:gap-4 lg:grid-cols-8">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory("")}
+              className={`flex min-w-[110px] shrink-0 flex-col items-center justify-center rounded-xl border p-3 text-center transition sm:min-w-0 ${
+                selectedCategory === ""
+                  ? "border-black bg-black text-white"
+                  : "border-gray-200 bg-white hover:bg-gray-50"
+              }`}
+            >
+              <span className="text-2xl">🔥</span>
+              <span className="mt-1 text-xs font-semibold">All</span>
+            </button>
 
-              return (
-                <button
-                  key={item.name}
-                  type="button"
-                  onClick={() => setCategory(item.name)}
-                  className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${
-                    active
-                      ? "bg-black text-white"
-                      : "bg-[#f1f1f1] text-gray-700 hover:bg-gray-200"
-                  }`}
-                >
-                  <span>{item.icon}</span>
-                  <span>{item.name}</span>
-                </button>
-              );
-            })}
+            {categories.map((category) => (
+              <button
+                key={category.name}
+                type="button"
+                onClick={() =>
+                  setSelectedCategory(
+                    selectedCategory === category.name ? "" : category.name
+                  )
+                }
+                className={`flex min-w-[110px] shrink-0 flex-col items-center justify-center rounded-xl border p-3 text-center transition sm:min-w-0 ${
+                  selectedCategory === category.name
+                    ? "border-black bg-black text-white"
+                    : "border-gray-200 bg-white hover:bg-gray-50"
+                }`}
+              >
+                <span className="text-2xl">{category.icon}</span>
+                <span className="mt-1 text-xs font-semibold">
+                  {category.name}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* MAIN */}
-      <div className="flex-1 w-full max-w-[100vw] overflow-hidden">
-        <div className="w-full px-0 sm:px-5 lg:px-7">
+      {/* MAIN CONTENT */}
+      <div className="mx-auto w-full max-w-7xl overflow-hidden px-3 py-6 sm:px-6 sm:py-10 lg:px-8">
+        {/* TITLE */}
+        <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-black sm:text-4xl">
+              Latest Listings
+            </h1>
 
-          {/* TOP AD */}
-          <div className="px-3 sm:px-0 py-3 sm:py-4">
-            <div className="h-16 sm:h-20 bg-white border border-gray-200 rounded-xl flex items-center justify-center">
-              <div className="text-center">
-                <p className="text-[9px] uppercase tracking-[0.25em] font-bold text-gray-400">
-                  Advertisement
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Your advertisement could appear here
-                </p>
-              </div>
-            </div>
+            <p className="mt-1 text-sm text-gray-500 sm:text-base">
+              Discover great deals from sellers on Sellio
+            </p>
           </div>
 
-          {/* CONTENT */}
-          <div className="pb-8">
+          {selectedCategory && (
+            <button
+              type="button"
+              onClick={() => setSelectedCategory("")}
+              className="w-fit rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-gray-50"
+            >
+              Clear category
+            </button>
+          )}
+        </div>
 
-            {/* LISTINGS HEADER */}
-            <div className="px-3 sm:px-0 flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] font-bold text-gray-400">
-                  Sellio Marketplace
-                </p>
+        {/* LISTINGS */}
+        {loading ? (
+          <div className="py-20 text-center text-gray-500">
+            Loading listings...
+          </div>
+        ) : filteredListings.length === 0 ? (
+          <div className="rounded-2xl border border-dashed p-10 text-center">
+            <div className="text-5xl">📦</div>
 
-                <h1 className="text-2xl sm:text-3xl font-black mt-1">
-                  {search || category !== "All"
-                    ? "Listings"
-                    : "Latest Listings"}
-                </h1>
-              </div>
+            <h2 className="mt-4 text-xl font-bold">
+              No listings found
+            </h2>
 
-              <p className="text-sm text-gray-500">
-                {filteredListings.length}{" "}
-                {filteredListings.length === 1
-                  ? "listing"
-                  : "listings"}
-              </p>
-            </div>
+            <p className="mt-2 text-gray-500">
+              Try another search or category.
+            </p>
+          </div>
+        ) : (
+          <div className="grid w-full grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filteredListings.map((listing) => {
+              const favourite = favourites.includes(listing.id);
+              const promoted = isPromoted(listing);
 
-            {/* ACTIVE FILTER */}
-            {(search || category !== "All") && (
-              <div className="mx-3 sm:mx-0 bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <p className="text-sm text-gray-600">
-                  {search && (
-                    <>
-                      Results for{" "}
-                      <strong className="text-black">
-                        "{search}"
-                      </strong>
-                    </>
-                  )}
+              const image =
+                listing.image ||
+                (listing.images && listing.images.length > 0
+                  ? listing.images[0]
+                  : null);
 
-                  {!search && category !== "All" && (
-                    <>
-                      Category:{" "}
-                      <strong className="text-black">
-                        {category}
-                      </strong>
-                    </>
-                  )}
-                </p>
-
-                <button
-                  type="button"
-                  onClick={clearSearch}
-                  className="text-sm font-bold text-gray-600 hover:text-red-600 transition"
+              return (
+                <article
+                  key={listing.id}
+                  className="relative flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
                 >
-                  Clear filters
-                </button>
-              </div>
-            )}
+                  {/* IMAGE */}
+                  <Link
+                    href={`/listing?id=${listing.id}`}
+                    className="relative block aspect-[4/3] w-full overflow-hidden bg-gray-100"
+                  >
+                    {image ? (
+                      <img
+                        src={image}
+                        alt={listing.title}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-5xl text-gray-400">
+                        📷
+                      </div>
+                    )}
 
-            {/* ERROR */}
-            {errorMessage && (
-              <div className="mx-3 sm:mx-0 mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
-                <p className="font-bold">
-                  Could not load listings
-                </p>
-                <p className="text-sm mt-1">
-                  {errorMessage}
-                </p>
-              </div>
-            )}
+                    {promoted && (
+                      <div className="absolute left-3 top-3 rounded-full bg-black px-3 py-1 text-xs font-bold text-white">
+                        PROMOTED
+                      </div>
+                    )}
+                  </Link>
 
-            {/* LOADING */}
-            {loading ? (
-              <div className="mx-3 sm:mx-0 bg-white border border-gray-200 rounded-xl py-20 text-center">
-                <div className="w-10 h-10 border-4 border-gray-200 border-t-black rounded-full animate-spin mx-auto" />
-                <p className="text-gray-500 mt-4">
-                  Loading listings...
-                </p>
-              </div>
-            ) : filteredListings.length === 0 ? (
-              <div className="mx-3 sm:mx-0 bg-white border border-gray-200 rounded-xl py-20 px-6 text-center">
-                <div className="text-6xl">📦</div>
-
-                <h2 className="text-2xl font-black mt-5">
-                  No listings found
-                </h2>
-
-                <p className="text-gray-500 mt-2">
-                  {search
-                    ? `No listing matches "${search}".`
-                    : category !== "All"
-                    ? `There are no listings in ${category}.`
-                    : "There are currently no listings."}
-                </p>
-
-                {(search || category !== "All") && (
+                  {/* FAVOURITE */}
                   <button
                     type="button"
-                    onClick={clearSearch}
-                    className="mt-5 bg-black text-white px-6 py-3 rounded-xl font-bold hover:bg-[#222] transition"
+                    onClick={() => toggleFavourite(listing.id)}
+                    className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white text-xl shadow-md transition hover:scale-105"
+                    title={
+                      favourite
+                        ? "Remove from favourites"
+                        : "Add to favourites"
+                    }
                   >
-                    Clear Filters
+                    {favourite ? "❤️" : "🤍"}
                   </button>
-                )}
-              </div>
-            ) : (
-              <div className="w-full space-y-4">
 
-                {filteredListings.map((listing) => {
-                  const promoted = isPromoted(listing);
-                  const isFavourite = favourites.includes(
-                    listing.id
-                  );
-
-                  return (
+                  {/* INFO */}
+                  <div className="flex w-full flex-1 flex-col p-4">
                     <Link
-                      key={listing.id}
-                      href={`/listing?id=${encodeURIComponent(
-                        String(listing.id)
-                      )}`}
-                      className={`group block w-full bg-white rounded-2xl border overflow-hidden transition-all hover:shadow-lg ${
-                        promoted
-                          ? "border-black"
-                          : "border-gray-200 hover:border-gray-400"
-                      }`}
+                      href={`/listing?id=${listing.id}`}
+                      className="line-clamp-2 text-base font-bold hover:underline sm:text-lg"
                     >
-
-                      {/* MOBILE */}
-                      <div className="sm:hidden w-full">
-
-                        {/* IMAGE */}
-                        <div className="relative w-full aspect-[4/3] bg-gray-100 overflow-hidden">
-
-                          {listing.image ? (
-                            <img
-                              src={listing.image}
-                              alt={
-                                listing.title || "Listing"
-                              }
-                              className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
-                            />
-                          ) : (
-                            <div className="absolute inset-0 flex items-center justify-center text-5xl bg-gray-100">
-                              📷
-                            </div>
-                          )}
-
-                          {promoted && (
-                            <span className="absolute top-3 left-3 bg-black text-white text-[10px] uppercase tracking-wide font-black px-3 py-1.5 rounded-lg shadow-md">
-                              🚀 Promoted
-                            </span>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={(event) =>
-                              toggleFavourite(
-                                event,
-                                listing.id
-                              )
-                            }
-                            className={`absolute top-3 right-3 w-11 h-11 rounded-full border flex items-center justify-center text-xl shadow-md transition ${
-                              isFavourite
-                                ? "bg-red-50 border-red-200 text-red-600"
-                                : "bg-white/95 border-white text-gray-600 hover:text-red-600"
-                            }`}
-                            title={
-                              isFavourite
-                                ? "Remove from favourites"
-                                : "Add to favourites"
-                            }
-                            aria-label={
-                              isFavourite
-                                ? "Remove from favourites"
-                                : "Add to favourites"
-                            }
-                          >
-                            {isFavourite ? "❤️" : "♡"}
-                          </button>
-                        </div>
-
-                        {/* INFO */}
-                        <div className="w-full p-4">
-                          <div className="flex items-center justify-between gap-3">
-                            {listing.category ? (
-                              <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold truncate min-w-0">
-                                {listing.category}
-                              </p>
-                            ) : (
-                              <span />
-                            )}
-
-                            <span className="text-[11px] text-gray-400 shrink-0">
-                              {formatDate(
-                                listing.created_at
-                              )}
-                            </span>
-                          </div>
-
-                          <h2 className="font-black text-lg leading-tight mt-2 line-clamp-2">
-                            {listing.title ||
-                              "Untitled listing"}
-                          </h2>
-
-                          <p className="text-2xl font-black mt-3">
-                            £
-                            {Number(
-                              listing.price || 0
-                            ).toLocaleString("en-GB")}
-                          </p>
-
-                          {listing.location && (
-                            <p className="text-sm text-gray-500 mt-3 truncate">
-                              📍 {listing.location}
-                            </p>
-                          )}
-
-                          {listing.description && (
-                            <p className="text-sm text-gray-500 mt-2 line-clamp-2">
-                              {listing.description}
-                            </p>
-                          )}
-
-                          <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-                            <span className="text-xs text-gray-400">
-                              Sellio Marketplace
-                            </span>
-
-                            <span className="text-sm font-bold text-black">
-                              View →
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* DESKTOP — unchanged */}
-                      <div className="hidden sm:flex min-h-[230px] lg:min-h-[250px]">
-                        <div className="relative w-[280px] md:w-[340px] lg:w-[390px] xl:w-[430px] shrink-0 bg-gray-100 overflow-hidden">
-
-                          {listing.image ? (
-                            <img
-                              src={listing.image}
-                              alt={
-                                listing.title ||
-                                "Listing"
-                              }
-                              className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
-                            />
-                          ) : (
-                            <div className="absolute inset-0 flex items-center justify-center text-5xl bg-gray-100">
-                              📷
-                            </div>
-                          )}
-
-                          {promoted && (
-                            <span className="absolute top-3 left-3 bg-black text-white text-[10px] uppercase tracking-wide font-black px-3 py-1.5 rounded-lg">
-                              🚀 Promoted
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex-1 min-w-0 p-6 lg:p-7 flex flex-col">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="min-w-0">
-                              {listing.category && (
-                                <p className="text-xs uppercase tracking-wider text-gray-400 font-bold truncate">
-                                  {listing.category}
-                                </p>
-                              )}
-
-                              <h2 className="font-black text-2xl lg:text-[26px] leading-tight mt-2 line-clamp-2 group-hover:underline">
-                                {listing.title ||
-                                  "Untitled listing"}
-                              </h2>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={(event) =>
-                                toggleFavourite(
-                                  event,
-                                  listing.id
-                                )
-                              }
-                              className={`shrink-0 w-12 h-12 rounded-full border flex items-center justify-center text-xl transition ${
-                                isFavourite
-                                  ? "bg-red-50 border-red-200 text-red-600"
-                                  : "bg-white border-gray-200 text-gray-500 hover:text-red-600 hover:border-red-200"
-                              }`}
-                              title={
-                                isFavourite
-                                  ? "Remove from favourites"
-                                  : "Add to favourites"
-                              }
-                              aria-label={
-                                isFavourite
-                                  ? "Remove from favourites"
-                                  : "Add to favourites"
-                              }
-                            >
-                              {isFavourite ? "❤️" : "♡"}
-                            </button>
-                          </div>
-
-                          <p className="text-3xl lg:text-4xl font-black mt-4">
-                            £
-                            {Number(
-                              listing.price || 0
-                            ).toLocaleString("en-GB")}
-                          </p>
-
-                          {listing.description && (
-                            <p className="text-sm lg:text-base text-gray-500 mt-3 line-clamp-3 max-w-4xl">
-                              {listing.description}
-                            </p>
-                          )}
-
-                          <div className="mt-auto pt-5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 text-sm text-gray-500 min-w-0">
-                              {listing.location && (
-                                <span className="truncate">
-                                  📍 {listing.location}
-                                </span>
-                              )}
-
-                              <span className="text-gray-300">
-                                •
-                              </span>
-
-                              <span className="shrink-0">
-                                {formatDate(
-                                  listing.created_at
-                                )}
-                              </span>
-                            </div>
-
-                            <span className="text-sm font-bold text-gray-400 group-hover:text-black transition">
-                              View listing →
-                            </span>
-                          </div>
-                        </div>
-                      </div>
+                      {listing.title}
                     </Link>
-                  );
-                })}
-              </div>
-            )}
 
+                    <div className="mt-2 text-xl font-black">
+                      £{Number(listing.price).toLocaleString()}
+                    </div>
+
+                    {listing.location && (
+                      <div className="mt-2 truncate text-sm text-gray-500">
+                        📍 {listing.location}
+                      </div>
+                    )}
+
+                    {listing.category && (
+                      <div className="mt-1 truncate text-xs font-medium text-gray-400">
+                        {listing.category}
+                      </div>
+                    )}
+
+                    <Link
+                      href={`/listing?id=${listing.id}`}
+                      className="mt-4 flex w-full items-center justify-center rounded-lg bg-black px-4 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800"
+                    >
+                      View Listing
+                    </Link>
+                  </div>
+                </article>
+              );
+            })}
           </div>
+        )}
 
-          {/* CTA */}
-          <section className="px-3 sm:px-0 pb-8">
-            <div className="bg-black text-white rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-5">
-              <div>
-                <p className="text-xl sm:text-2xl font-black">
-                  Have something to sell?
-                </p>
+        {/* CTA */}
+        <section className="mt-10 rounded-2xl bg-black px-5 py-8 text-center text-white sm:mt-16 sm:px-10 sm:py-12">
+          <h2 className="text-2xl font-black sm:text-3xl">
+            Have something to sell?
+          </h2>
 
-                <p className="text-gray-400 text-sm mt-1">
-                  Create a listing and reach buyers on Sellio.
-                </p>
-              </div>
+          <p className="mx-auto mt-2 max-w-xl text-sm text-gray-300 sm:text-base">
+            Create your listing and reach buyers on Sellio.
+          </p>
 
-              <Link
-                href="/sell"
-                className="bg-white text-black hover:bg-gray-200 px-6 py-3 rounded-xl font-black transition"
-              >
-                + Create Listing
-              </Link>
-            </div>
-          </section>
-
-          {/* BOTTOM AD */}
-          <section className="px-3 sm:px-0 pb-8">
-            <div className="bg-white border border-gray-200 rounded-xl h-24 sm:h-28 flex items-center justify-center text-center">
-              <div>
-                <p className="text-[9px] uppercase tracking-[0.2em] font-bold text-gray-400">
-                  Advertisement
-                </p>
-
-                <p className="text-gray-500 text-xs font-semibold mt-1">
-                  Your advertisement could appear here
-                </p>
-              </div>
-            </div>
-          </section>
-
-        </div>
+          <Link
+            href="/sell"
+            className="mt-6 inline-flex rounded-lg bg-white px-6 py-3 font-bold text-black transition hover:bg-gray-200"
+          >
+            + Create Listing
+          </Link>
+        </section>
       </div>
 
       {/* FOOTER */}
-      <footer className="bg-black text-gray-400">
-        <div className="w-full px-3 sm:px-5 lg:px-7 py-8">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
+      <footer className="border-t bg-gray-50">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-3 py-8 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+          <div>
+            © {new Date().getFullYear()} Sellio. All rights reserved.
+          </div>
 
-            <div className="text-center sm:text-left">
-              <p className="text-white text-xl font-black">
-                Sellio
-              </p>
+          <div className="flex gap-4">
+            <Link href="/profile" className="hover:text-black">
+              Profile
+            </Link>
 
-              <p className="text-xs mt-1 text-gray-500">
-                Buy. Sell. Discover.
-              </p>
-            </div>
+            <Link href="/messages" className="hover:text-black">
+              Messages
+            </Link>
 
-            <div className="flex flex-wrap justify-center gap-5 text-sm">
-              <Link href="/" className="hover:text-white transition">
-                Home
-              </Link>
-
-              <Link href="/sell" className="hover:text-white transition">
-                Sell
-              </Link>
-
-              <Link
-                href="/my-listings"
-                className="hover:text-white transition"
-              >
-                My Listings
-              </Link>
-
-              <Link
-                href="/favourites"
-                className="hover:text-white transition"
-              >
-                Favourites
-              </Link>
-
-              <Link
-                href="/messages"
-                className="hover:text-white transition"
-              >
-                Messages
-              </Link>
-
-              <Link
-                href="/profile"
-                className="hover:text-white transition"
-              >
-                Profile
-              </Link>
-            </div>
-
+            <Link href="/sell" className="hover:text-black">
+              Sell
+            </Link>
           </div>
         </div>
       </footer>
-
     </main>
   );
 }
