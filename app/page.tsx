@@ -1,1040 +1,783 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { createClient } from "../lib/supabase/client";
-import MessageBadge from "../components/MessageBadge";
+import { useState, type FormEvent } from "react";
+import { createClient } from "@/lib/supabase/client";
 
-type Listing = {
-  id: number;
-  title: string;
-  price: number | string;
-  location: string | null;
-  category: string | null;
-  description: string | null;
-  image: string | null;
-  images: string[] | null;
-  user_id: string;
-  created_at: string;
-  promoted: boolean | null;
-  promoted_until: string | null;
-};
-
-const categories = [
-  { name: "Cars & Vehicles", icon: "🚗" },
-  { name: "Property", icon: "🏠" },
-  { name: "Electronics", icon: "📱" },
-  { name: "Fashion", icon: "👕" },
-  { name: "Home & Garden", icon: "🏡" },
-  { name: "Gaming", icon: "🎮" },
-  { name: "Baby & Kids", icon: "🧸" },
-  { name: "Services", icon: "🔧" },
+const services = [
+  {
+    number: "01",
+    icon: "✦",
+    title: "Business Websites",
+    description: "Professional websites that build trust and help your business attract customers.",
+    price: "£199",
+  },
+  {
+    number: "02",
+    icon: "◈",
+    title: "E-commerce Stores",
+    description: "Online shops designed to showcase products and sell online.",
+    price: "£799",
+  },
+  {
+    number: "03",
+    icon: "↗",
+    title: "Landing Pages",
+    description: "High-impact landing pages for products, services and special offers.",
+    price: "£149",
+  },
+  {
+    number: "04",
+    icon: "⚙",
+    title: "Website Maintenance",
+    description: "Website updates and maintenance to keep your online presence running smoothly.",
+    price: "£29/mo",
+  },
 ];
 
+const packages = [
+  {
+    name: "Starter",
+    price: "£199",
+    description: "A professional online presence for small businesses.",
+    features: [
+      "Custom website design",
+      "Up to 3 pages",
+      "Mobile responsive layout",
+      "Contact form",
+      "Basic SEO setup",
+    ],
+  },
+  {
+    name: "Professional",
+    price: "£399",
+    description: "More space to showcase your business and services.",
+    features: [
+      "Custom website design",
+      "Up to 6 pages",
+      "Mobile responsive layout",
+      "Contact form",
+      "SEO-friendly structure",
+      "Social media integration",
+    ],
+    popular: true,
+  },
+  {
+    name: "Online Store",
+    price: "£799",
+    description: "Start presenting and selling products online.",
+    features: [
+      "Custom online store",
+      "Product catalogue setup",
+      "Responsive design",
+      "Shopping cart setup",
+      "Checkout integration",
+      "Basic SEO setup",
+    ],
+  },
+];
+
+const steps = [
+  {
+    number: "01",
+    title: "Tell us your idea",
+    description: "Share your business details, goals and the website you have in mind.",
+  },
+  {
+    number: "02",
+    title: "We design your website",
+    description: "We create a design based on your brand, audience and requirements.",
+  },
+  {
+    number: "03",
+    title: "Review the design",
+    description: "Review the proposed website and discuss any agreed changes.",
+  },
+  {
+    number: "04",
+    title: "Launch your website",
+    description: "Once approved, we arrange the final steps needed to launch your website.",
+  },
+];
+
+const inputClass =
+  "w-full rounded-xl border border-white/10 bg-[#101211] px-4 py-3.5 text-sm text-white placeholder:text-gray-600 outline-none transition focus:border-[#c6ff00] focus:ring-2 focus:ring-[#c6ff00]/10";
+
+const sectionClass =
+  "w-full px-5 py-20 sm:px-8 sm:py-24 lg:px-12 lg:py-28 xl:px-16 2xl:px-24";
+
 export default function HomePage() {
-  const supabase = createClient();
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [business, setBusiness] = useState("");
+  const [service, setService] = useState("Business Website");
+  const [budget, setBudget] = useState("£199–£399");
+  const [details, setDetails] = useState("");
 
-  const [search, setSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("");
-  const [sortBy, setSortBy] = useState("newest");
+  const [submitting, setSubmitting] = useState(false);
+  const [formMessage, setFormMessage] = useState("");
+  const [formSuccess, setFormSuccess] = useState(false);
 
-  const [minPrice, setMinPrice] = useState("");
-  const [maxPrice, setMaxPrice] = useState("");
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
 
-  const [favourites, setFavourites] = useState<number[]>([]);
-  const [userId, setUserId] = useState<string | null>(null);
+    if (submitting) return;
 
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  async function loadData() {
-    setLoading(true);
+    setSubmitting(true);
+    setFormMessage("");
+    setFormSuccess(false);
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const supabase = createClient();
 
-      setUserId(user?.id ?? null);
+      const { error } = await supabase.from("website_enquiries").insert({
+        customer_name: name.trim(),
+        email: email.trim(),
+        business_name: business.trim() || null,
+        service,
+        budget,
+        project_details: details.trim(),
+      });
 
-      const { data: listingsData, error: listingsError } = await supabase
-        .from("listings")
-        .select(
-          `
-          id,
-          title,
-          price,
-          location,
-          category,
-          description,
-          image,
-          images,
-          user_id,
-          created_at,
-          promoted,
-          promoted_until
-        `
-        )
-        .order("created_at", { ascending: false });
-
-      if (listingsError) {
-        console.error("Listings error:", listingsError);
+      if (error) {
+        console.error("Supabase enquiry error:", error.message);
+        setFormMessage("We could not submit your enquiry. Please try again.");
+        return;
       }
 
-      setListings((listingsData as Listing[]) || []);
+      setFormSuccess(true);
+      setFormMessage("Thank you! Your enquiry has been submitted successfully.");
 
-      if (user) {
-        const { data: favouritesData, error: favouritesError } =
-          await supabase
-            .from("favourites")
-            .select("listing_id")
-            .eq("user_id", user.id);
-
-        if (favouritesError) {
-          console.error("Favourites error:", favouritesError);
-        }
-
-        setFavourites(
-          (favouritesData || []).map((item) => Number(item.listing_id))
-        );
-      } else {
-        setFavourites([]);
-      }
+      setName("");
+      setEmail("");
+      setBusiness("");
+      setService("Business Website");
+      setBudget("£199–£399");
+      setDetails("");
     } catch (error) {
-      console.error(error);
+      console.error("Enquiry submission failed:", error);
+      setFormMessage("Something went wrong. Please try again.");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
-  async function toggleFavourite(listingId: number) {
-    if (!userId) {
-      window.location.href = "/login";
-      return;
-    }
-
-    const isFavourite = favourites.includes(listingId);
-
-    if (isFavourite) {
-      const { error } = await supabase
-        .from("favourites")
-        .delete()
-        .eq("user_id", userId)
-        .eq("listing_id", listingId);
-
-      if (error) {
-        console.error("Remove favourite error:", error);
-        return;
-      }
-
-      setFavourites((current) =>
-        current.filter((id) => id !== listingId)
-      );
-    } else {
-      const { error } = await supabase.from("favourites").insert({
-        user_id: userId,
-        listing_id: listingId,
-      });
-
-      if (error) {
-        console.error("Add favourite error:", error);
-        return;
-      }
-
-      setFavourites((current) => [...current, listingId]);
-    }
-  }
-
-  const filteredListings = useMemo(() => {
-    let result = [...listings];
-
-    const searchValue = search.trim().toLowerCase();
-
-    if (searchValue) {
-      result = result.filter((item) => {
-        const text = [
-          item.title,
-          item.description,
-          item.location,
-          item.category,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        return text.includes(searchValue);
-      });
-    }
-
-    if (selectedCategory) {
-      result = result.filter(
-        (item) => item.category === selectedCategory
-      );
-    }
-
-    if (minPrice) {
-      const min = Number(minPrice);
-
-      result = result.filter((item) => Number(item.price) >= min);
-    }
-
-    if (maxPrice) {
-      const max = Number(maxPrice);
-
-      result = result.filter((item) => Number(item.price) <= max);
-    }
-
-    result.sort((a, b) => {
-      if (sortBy === "oldest") {
-        return (
-          new Date(a.created_at).getTime() -
-          new Date(b.created_at).getTime()
-        );
-      }
-
-      if (sortBy === "price-low") {
-        return Number(a.price) - Number(b.price);
-      }
-
-      if (sortBy === "price-high") {
-        return Number(b.price) - Number(a.price);
-      }
-
-      if (sortBy === "a-z") {
-        return a.title.localeCompare(b.title);
-      }
-
-      return (
-        new Date(b.created_at).getTime() -
-        new Date(a.created_at).getTime()
-      );
-    });
-
-    return result;
-  }, [
-    listings,
-    search,
-    selectedCategory,
-    minPrice,
-    maxPrice,
-    sortBy,
-  ]);
-
-  function clearFilters() {
-    setSearch("");
-    setSelectedCategory("");
-    setMinPrice("");
-    setMaxPrice("");
-    setSortBy("newest");
-  }
-
-  function isPromoted(item: Listing) {
-    if (!item.promoted) return false;
-
-    if (!item.promoted_until) return true;
-
-    return new Date(item.promoted_until).getTime() > Date.now();
-  }
-
-  function getImage(item: Listing) {
-    if (item.image) return item.image;
-
-    if (item.images && item.images.length > 0) {
-      return item.images[0];
-    }
-
-    return null;
+  function chooseService(value: string) {
+    setService(value);
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-[#f5f5f5] text-black">
-
+    <main className="min-h-screen w-full overflow-x-hidden bg-[#090a0b] text-[#f5f7f5]">
       {/* HEADER */}
-      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white shadow-sm">
-        <div className="w-full px-4 sm:px-6 lg:px-8">
-          <div className="flex h-[72px] items-center gap-4">
+      <header className="sticky top-0 z-50 border-b border-white/[0.08] bg-[#090a0b]/90 backdrop-blur-xl">
+        <div className="flex min-h-[76px] items-center justify-between px-5 sm:px-8 lg:px-12 xl:px-16">
+          <a href="#home" className="group flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#c6ff00] text-xl font-black text-black transition group-hover:rotate-[-6deg]">
+              S
+            </span>
+            <span className="text-2xl font-black tracking-tight">
+              Sellio<span className="text-[#c6ff00]">.</span>
+            </span>
+          </a>
 
-            {/* LOGO */}
-            <Link
-              href="/"
-              className="shrink-0 text-3xl font-black tracking-tight"
-            >
-              Sellio
-            </Link>
-
-            {/* DESKTOP SEARCH */}
-            <div className="hidden min-w-0 flex-1 md:block">
-              <div className="mx-auto flex max-w-[1100px] overflow-hidden rounded-xl border border-gray-300 bg-white">
-
-                <div className="flex items-center px-4 text-gray-400">
-                  🔍
-                </div>
-
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search for anything..."
-                  className="h-12 min-w-0 flex-1 bg-transparent px-2 text-base outline-none"
-                />
-
-                {search && (
-                  <button
-                    onClick={() => setSearch("")}
-                    className="px-4 text-gray-500 hover:text-black"
-                  >
-                    ✕
-                  </button>
-                )}
-
-                <button className="bg-black px-7 font-semibold text-white transition hover:bg-gray-800">
-                  Search
-                </button>
-
-              </div>
-            </div>
-
-            {/* DESKTOP ACTIONS */}
-            <div className="hidden shrink-0 items-center gap-2 lg:flex">
-
-              <Link
-                href="/favourites"
-                className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100"
+          <nav className="hidden items-center gap-8 lg:flex">
+            {[
+              ["Services", "#services"],
+              ["Pricing", "#pricing"],
+              ["How it works", "#process"],
+              ["About", "#about"],
+            ].map(([label, href]) => (
+              <a
+                key={label}
+                href={href}
+                className="text-sm font-medium text-gray-400 transition hover:text-[#c6ff00]"
               >
-                ♡ Favourites
-              </Link>
+                {label}
+              </a>
+            ))}
+          </nav>
 
-              <Link
-                href="/my-listings"
-                className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100"
-              >
-                My Listings
-              </Link>
+          <a
+            href="#contact"
+            className="hidden rounded-full bg-[#c6ff00] px-6 py-3 text-sm font-black text-black transition hover:bg-white sm:inline-flex"
+          >
+            Get a quote ↗
+          </a>
 
-              <MessageBadge />
-
-              <Link
-                href="/profile"
-                className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100"
-              >
-                Profile
-              </Link>
-
-              <Link
-                href="/sell"
-                className="rounded-xl bg-black px-5 py-3 font-bold text-white transition hover:bg-gray-800"
-              >
-                + Sell
-              </Link>
-
-            </div>
-
-            {/* MOBILE MENU */}
-            <button
-              onClick={() => setMobileMenuOpen((value) => !value)}
-              className="ml-auto rounded-lg border border-gray-300 px-3 py-2 text-xl md:hidden"
-            >
-              ☰
-            </button>
-
-          </div>
-
-          {/* MOBILE SEARCH */}
-          <div className="pb-3 md:hidden">
-            <div className="flex overflow-hidden rounded-xl border border-gray-300 bg-white">
-
-              <div className="flex items-center px-3 text-gray-400">
-                🔍
-              </div>
-
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search..."
-                className="h-11 min-w-0 flex-1 bg-transparent px-2 outline-none"
-              />
-
-              {search && (
-                <button
-                  onClick={() => setSearch("")}
-                  className="px-3 text-gray-500"
-                >
-                  ✕
-                </button>
-              )}
-
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={() => setMenuOpen(!menuOpen)}
+            aria-label="Toggle navigation"
+            aria-expanded={menuOpen}
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 text-xl lg:hidden"
+          >
+            {menuOpen ? "×" : "☰"}
+          </button>
         </div>
 
-        {/* MOBILE MENU */}
-        {mobileMenuOpen && (
-          <div className="border-t border-gray-200 bg-white md:hidden">
-            <div className="space-y-1 px-4 py-4">
-
-              <Link
-                href="/"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block rounded-lg px-4 py-3 font-medium hover:bg-gray-100"
+        {menuOpen && (
+          <nav className="flex flex-col gap-1 border-t border-white/10 bg-[#0d0f0e] p-4 lg:hidden">
+            {[
+              ["Services", "#services"],
+              ["Pricing", "#pricing"],
+              ["How it works", "#process"],
+              ["About", "#about"],
+              ["Contact", "#contact"],
+            ].map(([label, href]) => (
+              <a
+                key={label}
+                href={href}
+                onClick={() => setMenuOpen(false)}
+                className="rounded-xl px-4 py-3 font-medium text-gray-300 hover:bg-white/5 hover:text-[#c6ff00]"
               >
-                🏠 Home
-              </Link>
-
-              <Link
-                href="/my-listings"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block rounded-lg px-4 py-3 font-medium hover:bg-gray-100"
-              >
-                📋 My Listings
-              </Link>
-
-              <Link
-                href="/favourites"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block rounded-lg px-4 py-3 font-medium hover:bg-gray-100"
-              >
-                ♡ Favourites
-              </Link>
-
-              <Link
-                href="/messages"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block rounded-lg px-4 py-3 font-medium hover:bg-gray-100"
-              >
-                💬 Messages
-              </Link>
-
-              <Link
-                href="/profile"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block rounded-lg px-4 py-3 font-medium hover:bg-gray-100"
-              >
-                👤 Profile
-              </Link>
-
-              <Link
-                href="/sell"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block rounded-xl bg-black px-4 py-3 text-center font-bold text-white"
-              >
-                + Sell
-              </Link>
-
-            </div>
-          </div>
+                {label}
+              </a>
+            ))}
+          </nav>
         )}
-
       </header>
 
-      {/* DESKTOP CATEGORY BAR */}
-      <div className="hidden border-b border-gray-200 bg-white lg:block">
-        <div className="w-full overflow-x-auto px-4 sm:px-6 lg:px-8">
+      {/* HERO */}
+      <section id="home" className="relative overflow-hidden border-b border-white/[0.06]">
+        <div className="pointer-events-none absolute -right-40 -top-40 h-[500px] w-[500px] rounded-full bg-[#c6ff00]/[0.08] blur-[120px]" />
+        <div className="pointer-events-none absolute -bottom-40 left-0 h-[400px] w-[400px] rounded-full bg-[#c6ff00]/[0.04] blur-[100px]" />
 
-          <div className="flex min-w-max items-center gap-2 py-3">
-
-            <button
-              onClick={() => setSelectedCategory("")}
-              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                !selectedCategory
-                  ? "bg-black text-white"
-                  : "bg-gray-100 hover:bg-gray-200"
-              }`}
-            >
-              All
-            </button>
-
-            {categories.map((category) => (
-              <button
-                key={category.name}
-                onClick={() =>
-                  setSelectedCategory(
-                    selectedCategory === category.name
-                      ? ""
-                      : category.name
-                  )
-                }
-                className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                  selectedCategory === category.name
-                    ? "bg-black text-white"
-                    : "bg-gray-100 hover:bg-gray-200"
-                }`}
-              >
-                {category.icon} {category.name}
-              </button>
-            ))}
-
-          </div>
-
-        </div>
-      </div>
-
-      {/* MOBILE CATEGORIES */}
-      <div className="border-b border-gray-200 bg-white lg:hidden">
-        <div className="overflow-x-auto px-4 py-3">
-
-          <div className="flex min-w-max gap-2">
-
-            <button
-              onClick={() => setSelectedCategory("")}
-              className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
-                !selectedCategory
-                  ? "border-black bg-black text-white"
-                  : "border-gray-200 bg-gray-50"
-              }`}
-            >
-              All
-            </button>
-
-            {categories.map((category) => (
-              <button
-                key={category.name}
-                onClick={() =>
-                  setSelectedCategory(
-                    selectedCategory === category.name
-                      ? ""
-                      : category.name
-                  )
-                }
-                className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
-                  selectedCategory === category.name
-                    ? "border-black bg-black text-white"
-                    : "border-gray-200 bg-gray-50"
-                }`}
-              >
-                <span className="mr-1">
-                  {category.icon}
-                </span>
-
-                {category.name}
-              </button>
-            ))}
-
-          </div>
-
-        </div>
-      </div>
-
-      {/* MAIN CONTENT */}
-      <section className="flex-1 w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-
-        <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-
+        <div className="relative grid items-center gap-16 px-5 py-20 sm:px-8 sm:py-24 lg:grid-cols-[1.05fr_0.95fr] lg:gap-12 lg:px-12 lg:py-32 xl:px-16 2xl:px-24">
           <div>
+            <div className="mb-8 inline-flex items-center gap-3 rounded-full border border-[#c6ff00]/20 bg-[#c6ff00]/[0.06] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] text-[#c6ff00] sm:text-sm">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-[#c6ff00]" />
+              Digital experiences that deliver
+            </div>
 
-            <h1 className="text-2xl font-black sm:text-3xl">
-              Find what you need
+            <h1 className="text-5xl font-black leading-[0.98] tracking-[-0.06em] sm:text-6xl lg:text-7xl xl:text-[86px]">
+              Make your
+              <br />
+              business
+              <br />
+              <span className="text-[#c6ff00]">stand out.</span>
             </h1>
 
-            <p className="mt-1 text-sm text-gray-500">
-              Discover great deals from sellers on Sellio.
+            <p className="mt-8 max-w-xl text-lg leading-8 text-gray-400 sm:text-xl">
+              We build modern websites that make your business look its best,
+              attract new customers and turn visitors into enquiries.
             </p>
 
+            <div className="mt-10 flex flex-col gap-4 sm:flex-row">
+              <a
+                href="#contact"
+                className="inline-flex min-h-14 items-center justify-center rounded-full bg-[#c6ff00] px-8 py-4 font-black text-black transition hover:-translate-y-1 hover:bg-white"
+              >
+                Start your project <span className="ml-2">↗</span>
+              </a>
+              <a
+                href="#services"
+                className="inline-flex min-h-14 items-center justify-center rounded-full border border-white/15 px-8 py-4 font-bold text-white transition hover:border-[#c6ff00]/50 hover:text-[#c6ff00]"
+              >
+                Explore services
+              </a>
+            </div>
+
+            <div className="mt-12 flex flex-wrap gap-x-7 gap-y-4 border-t border-white/10 pt-7 text-sm text-gray-400">
+              <span><span className="mr-2 text-[#c6ff00]">✓</span>Modern design</span>
+              <span><span className="mr-2 text-[#c6ff00]">✓</span>Mobile-ready</span>
+              <span><span className="mr-2 text-[#c6ff00]">✓</span>Clear pricing</span>
+            </div>
           </div>
 
-          <div className="text-sm text-gray-500">
+          {/* Website preview */}
+          <div className="relative mx-auto w-full max-w-2xl lg:max-w-none">
+            <div className="absolute -inset-5 rounded-[35px] bg-[#c6ff00]/[0.07] blur-3xl" />
 
-            <span className="font-semibold text-black">
-              {filteredListings.length}
-            </span>{" "}
-
-            {filteredListings.length === 1
-              ? "listing"
-              : "listings"}
-
-          </div>
-
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-[250px_minmax(0,1fr)]">
-
-          {/* SIDEBAR */}
-          <aside className="hidden h-fit rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:block">
-
-            <div className="mb-5 flex items-center justify-between">
-
-              <h2 className="text-lg font-bold">
-                Filters
-              </h2>
-
-              <button
-                onClick={clearFilters}
-                className="text-sm font-semibold text-gray-500 hover:text-black"
-              >
-                Clear
-              </button>
-
-            </div>
-
-            <div className="mb-6">
-
-              <label className="mb-2 block text-sm font-semibold">
-                Category
-              </label>
-
-              <select
-                value={selectedCategory}
-                onChange={(e) =>
-                  setSelectedCategory(e.target.value)
-                }
-                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 outline-none focus:border-black"
-              >
-                <option value="">
-                  All categories
-                </option>
-
-                {categories.map((category) => (
-                  <option
-                    key={category.name}
-                    value={category.name}
-                  >
-                    {category.name}
-                  </option>
-                ))}
-
-              </select>
-
-            </div>
-
-            <div className="mb-6">
-
-              <label className="mb-2 block text-sm font-semibold">
-                Price
-              </label>
-
-              <div className="grid grid-cols-2 gap-2">
-
-                <input
-                  type="number"
-                  value={minPrice}
-                  onChange={(e) =>
-                    setMinPrice(e.target.value)
-                  }
-                  placeholder="Min"
-                  className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-black"
-                />
-
-                <input
-                  type="number"
-                  value={maxPrice}
-                  onChange={(e) =>
-                    setMaxPrice(e.target.value)
-                  }
-                  placeholder="Max"
-                  className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-black"
-                />
-
+            <div className="relative overflow-hidden rounded-[25px] border border-white/10 bg-[#111412] p-3 shadow-2xl sm:p-5">
+              <div className="flex items-center gap-2 border-b border-white/10 px-2 pb-4">
+                <span className="h-3 w-3 rounded-full bg-[#ff605c]" />
+                <span className="h-3 w-3 rounded-full bg-[#ffbd44]" />
+                <span className="h-3 w-3 rounded-full bg-[#00ca4e]" />
+                <div className="ml-3 flex-1 rounded-full bg-[#090a0b] px-4 py-2 text-center text-xs text-gray-500">
+                  yourbusiness.co.uk
+                </div>
               </div>
 
-            </div>
-
-            <div>
-
-              <label className="mb-2 block text-sm font-semibold">
-                Sort by
-              </label>
-
-              <select
-                value={sortBy}
-                onChange={(e) =>
-                  setSortBy(e.target.value)
-                }
-                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 outline-none focus:border-black"
-              >
-                <option value="newest">
-                  Newest
-                </option>
-
-                <option value="oldest">
-                  Oldest
-                </option>
-
-                <option value="price-low">
-                  Price: Low to High
-                </option>
-
-                <option value="price-high">
-                  Price: High to Low
-                </option>
-
-                <option value="a-z">
-                  A-Z
-                </option>
-
-              </select>
-
-            </div>
-
-          </aside>
-
-          {/* LISTINGS */}
-          <div className="min-w-0">
-
-            {/* MOBILE FILTERS */}
-            <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm lg:hidden">
-
-              <div className="grid grid-cols-2 gap-3">
-
-                <select
-                  value={selectedCategory}
-                  onChange={(e) =>
-                    setSelectedCategory(e.target.value)
-                  }
-                  className="rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm outline-none"
-                >
-                  <option value="">
-                    All categories
-                  </option>
-
-                  {categories.map((category) => (
-                    <option
-                      key={category.name}
-                      value={category.name}
-                    >
-                      {category.name}
-                    </option>
-                  ))}
-
-                </select>
-
-                <select
-                  value={sortBy}
-                  onChange={(e) =>
-                    setSortBy(e.target.value)
-                  }
-                  className="rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm outline-none"
-                >
-                  <option value="newest">
-                    Newest
-                  </option>
-
-                  <option value="oldest">
-                    Oldest
-                  </option>
-
-                  <option value="price-low">
-                    Price Low
-                  </option>
-
-                  <option value="price-high">
-                    Price High
-                  </option>
-
-                  <option value="a-z">
-                    A-Z
-                  </option>
-
-                </select>
-
-                <input
-                  type="number"
-                  value={minPrice}
-                  onChange={(e) =>
-                    setMinPrice(e.target.value)
-                  }
-                  placeholder="Min price"
-                  className="rounded-xl border border-gray-300 px-3 py-3 text-sm outline-none"
-                />
-
-                <input
-                  type="number"
-                  value={maxPrice}
-                  onChange={(e) =>
-                    setMaxPrice(e.target.value)
-                  }
-                  placeholder="Max price"
-                  className="rounded-xl border border-gray-300 px-3 py-3 text-sm outline-none"
-                />
-
-              </div>
-
-              <button
-                onClick={clearFilters}
-                className="mt-3 w-full rounded-xl bg-gray-100 py-3 text-sm font-semibold hover:bg-gray-200"
-              >
-                Clear filters
-              </button>
-
-            </div>
-
-            {/* LOADING */}
-            {loading ? (
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
-
-                {Array.from({ length: 10 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="overflow-hidden rounded-2xl border border-gray-200 bg-white"
-                  >
-
-                    <div className="aspect-[4/3] animate-pulse bg-gray-200" />
-
-                    <div className="space-y-3 p-4">
-
-                      <div className="h-5 animate-pulse rounded bg-gray-200" />
-
-                      <div className="h-4 w-1/2 animate-pulse rounded bg-gray-200" />
-
-                      <div className="h-4 w-2/3 animate-pulse rounded bg-gray-200" />
-
-                    </div>
-
+              <div className="grid min-h-[340px] grid-cols-2 overflow-hidden rounded-2xl bg-[#171b17] sm:min-h-[430px]">
+                <div className="flex flex-col justify-center p-5 sm:p-8">
+                  <div className="mb-4 text-[10px] font-bold uppercase tracking-[0.18em] text-[#c6ff00] sm:text-xs">
+                    Your business. Your vision.
                   </div>
-                ))}
-
-              </div>
-
-            ) : filteredListings.length === 0 ? (
-
-              <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 text-center shadow-sm">
-
-                <div className="text-5xl">
-                  🔎
+                  <div className="text-2xl font-black leading-tight sm:text-4xl">
+                    Built to
+                    <br />
+                    <span className="text-[#c6ff00]">move you</span>
+                    <br />
+                    forward.
+                  </div>
+                  <p className="mt-4 text-xs leading-6 text-gray-400 sm:text-sm">
+                    A powerful online presence starts here.
+                  </p>
+                  <span className="mt-6 inline-flex w-fit rounded-full bg-[#c6ff00] px-4 py-2 text-[10px] font-black text-black sm:text-xs">
+                    Discover more ↗
+                  </span>
                 </div>
 
-                <h2 className="mt-4 text-xl font-bold">
-                  No listings found
-                </h2>
+                <div className="relative flex items-center justify-center overflow-hidden bg-[#c6ff00] p-4 sm:p-7">
+                  <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full border border-black/15" />
+                  <div className="absolute -bottom-12 -left-10 h-48 w-48 rounded-full border border-black/15" />
 
-                <p className="mt-2 text-gray-500">
-                  Try changing your search or filters.
-                </p>
-
-                <button
-                  onClick={clearFilters}
-                  className="mt-5 rounded-xl bg-black px-6 py-3 font-semibold text-white hover:bg-gray-800"
-                >
-                  Clear filters
-                </button>
-
-              </div>
-
-            ) : (
-
-              <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-
-                {filteredListings.map((item) => {
-
-                  const image = getImage(item);
-                  const promoted = isPromoted(item);
-                  const favourite = favourites.includes(item.id);
-
-                  return (
-                    <article
-                      key={item.id}
-                      className="group min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-lg"
-                    >
-
-                      {/* IMAGE */}
-                      <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
-
-                        {image ? (
-                          <img
-                            src={image}
-                            alt={item.title}
-                            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-5xl text-gray-300">
-                            📷
-                          </div>
-                        )}
-
-                        {promoted && (
-                          <div className="absolute left-3 top-3 rounded-lg bg-black px-3 py-1.5 text-xs font-bold text-white shadow">
-                            PROMOTED
-                          </div>
-                        )}
-
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            toggleFavourite(item.id);
-                          }}
-                          className={`absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-xl shadow-md backdrop-blur transition hover:scale-105 ${
-                            favourite
-                              ? "text-red-500"
-                              : "text-gray-700"
-                          }`}
-                          aria-label="Favourite"
-                        >
-                          {favourite ? "♥" : "♡"}
-                        </button>
-
+                  <div className="relative w-full -rotate-3 rounded-2xl border border-black/10 bg-[#111412] p-3 shadow-2xl sm:p-5">
+                    <div className="mb-5 flex items-center justify-between">
+                      <span className="text-xs font-black text-white">BRAND STUDIO</span>
+                      <span className="text-lg text-[#c6ff00]">✳</span>
+                    </div>
+                    <div className="mb-2 h-3 w-4/5 rounded-full bg-white/90" />
+                    <div className="mb-2 h-3 w-3/5 rounded-full bg-white/25" />
+                    <div className="mb-5 h-2 w-full rounded-full bg-white/10" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="h-20 rounded-xl bg-[#c6ff00] sm:h-28" />
+                      <div className="h-20 rounded-xl bg-white/10 sm:h-28" />
+                      <div className="col-span-2 flex h-12 items-center justify-between rounded-xl bg-white/5 px-3">
+                        <span className="text-[10px] text-gray-300">Your next big idea</span>
+                        <span className="text-[#c6ff00]">↗</span>
                       </div>
-
-                      {/* CONTENT */}
-                      <Link
-                        href={`/listing?id=${item.id}`}
-                        className="block"
-                      >
-
-                        <div className="p-4">
-
-                          <h2 className="line-clamp-2 min-w-0 text-base font-bold leading-tight">
-                            {item.title}
-                          </h2>
-
-                          <div className="mt-2 text-xl font-black">
-                            £
-                            {Number(item.price).toLocaleString(
-                              "en-GB"
-                            )}
-                          </div>
-
-                          <div className="mt-3 space-y-1 text-sm text-gray-500">
-
-                            {item.location && (
-                              <div className="truncate">
-                                📍 {item.location}
-                              </div>
-                            )}
-
-                            {item.category && (
-                              <div className="truncate">
-                                {item.category}
-                              </div>
-                            )}
-
-                          </div>
-
-                          <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
-
-                            <span className="text-xs text-gray-400">
-                              {new Date(
-                                item.created_at
-                              ).toLocaleDateString("en-GB")}
-                            </span>
-
-                            <span className="text-sm font-bold">
-                              View listing →
-                            </span>
-
-                          </div>
-
-                        </div>
-
-                      </Link>
-
-                    </article>
-                  );
-                })}
-
+                    </div>
+                  </div>
+                </div>
               </div>
 
+              <div className="flex flex-wrap items-center justify-between gap-3 px-2 pt-4 sm:px-3">
+                <div>
+                  <div className="text-sm font-bold">Designed to make an impact</div>
+                  <div className="mt-1 text-xs text-gray-500">Modern. Responsive. Professional.</div>
+                </div>
+                <span className="rounded-full border border-[#c6ff00]/20 bg-[#c6ff00]/[0.07] px-3 py-2 text-xs font-bold text-[#c6ff00]">
+                  Let&apos;s build ↗
+                </span>
+              </div>
+            </div>
+
+            <div className="absolute -left-2 top-10 hidden rounded-2xl border border-white/10 bg-[#111412] p-4 shadow-xl sm:block lg:-left-8">
+              <div className="text-xs text-gray-500">Projects from</div>
+              <div className="mt-1 text-2xl font-black">£149</div>
+              <div className="text-xs font-semibold text-[#c6ff00]">Built around you</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* BENEFITS */}
+      <section className="border-b border-white/[0.06] bg-[#0d0f0e]">
+        <div className="grid grid-cols-2 gap-8 px-5 py-9 sm:px-8 md:grid-cols-4 lg:px-12 xl:px-16">
+          {[
+            ["01", "Personalised design"],
+            ["02", "Mobile-friendly"],
+            ["03", "Transparent pricing"],
+            ["04", "Direct communication"],
+          ].map(([number, label]) => (
+            <div key={number} className="flex items-center gap-3">
+              <span className="text-sm font-black text-[#c6ff00]">{number}</span>
+              <span className="text-sm font-semibold text-gray-300 sm:text-base">{label}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* SERVICES */}
+      <section id="services" className={`${sectionClass} scroll-mt-24 bg-[#090a0b]`}>
+        <div className="mb-12 flex flex-col justify-between gap-6 md:flex-row md:items-end">
+          <div>
+            <p className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-[#c6ff00]">
+              What we do <span className="ml-2 text-gray-600">/ 01</span>
+            </p>
+            <h2 className="text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">
+              Digital services.
+              <br />
+              <span className="text-gray-500">Real possibilities.</span>
+            </h2>
+          </div>
+          <p className="max-w-xl text-base leading-7 text-gray-400 sm:text-lg">
+            From a simple business website to a complete online store, we
+            create digital experiences tailored to your goals.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {services.map((item) => (
+            <article
+              key={item.number}
+              className="group flex min-h-[310px] flex-col rounded-3xl border border-white/10 bg-[#101211] p-6 transition duration-300 hover:-translate-y-1 hover:border-[#c6ff00]/40 hover:bg-[#141713] sm:p-7"
+            >
+              <div className="flex items-center justify-between">
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#c6ff00]/15 bg-[#c6ff00]/[0.07] text-2xl text-[#c6ff00] transition group-hover:bg-[#c6ff00] group-hover:text-black">
+                  {item.icon}
+                </span>
+                <span className="text-sm font-bold text-gray-600">{item.number}</span>
+              </div>
+              <h3 className="mt-7 text-xl font-bold sm:text-2xl">{item.title}</h3>
+              <p className="mt-3 flex-1 text-sm leading-7 text-gray-400">{item.description}</p>
+              <div className="mt-7 flex items-end justify-between border-t border-white/10 pt-5">
+                <div>
+                  <div className="text-xs text-gray-500">Starting from</div>
+                  <div className="mt-1 text-2xl font-black">{item.price}</div>
+                </div>
+                <a
+                  href="#contact"
+                  onClick={() => chooseService(item.title)}
+                  aria-label={`Enquire about ${item.title}`}
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 text-xl transition hover:bg-[#c6ff00] hover:text-black"
+                >
+                  ↗
+                </a>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* ABOUT */}
+      <section id="about" className="scroll-mt-24 border-y border-white/[0.06] bg-[#101211]">
+        <div className={`${sectionClass} grid gap-12 lg:grid-cols-2 lg:items-center lg:gap-20`}>
+          <div>
+            <p className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-[#c6ff00]">
+              Why Sellio <span className="ml-2 text-gray-600">/ 02</span>
+            </p>
+            <h2 className="text-4xl font-black leading-tight tracking-tight sm:text-5xl lg:text-6xl">
+              Good design
+              <br />
+              should work
+              <br />
+              <span className="text-[#c6ff00]">for your business.</span>
+            </h2>
+          </div>
+
+          <div>
+            <p className="text-lg leading-8 text-gray-400">
+              Your website is often the first impression people have of your
+              business. We focus on clear messaging, thoughtful design and
+              responsive layouts that help visitors understand what you offer.
+            </p>
+            <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {[
+                ["Thoughtful design", "A look that fits your business and brand."],
+                ["Built for mobile", "Layouts that adapt to different screens."],
+                ["Clear communication", "Know what is included in your project."],
+                ["Room to grow", "Plan a website around your future goals."],
+              ].map(([title, description]) => (
+                <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 transition hover:border-[#c6ff00]/30">
+                  <div className="mb-2 font-bold">{title}</div>
+                  <p className="text-sm leading-6 text-gray-500">{description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* PRICING */}
+      <section id="pricing" className="scroll-mt-24 bg-[#090a0b]">
+        <div className={sectionClass}>
+          <div className="mx-auto mb-14 max-w-3xl text-center">
+            <p className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-[#c6ff00]">
+              Simple pricing <span className="ml-2 text-gray-600">/ 03</span>
+            </p>
+            <h2 className="text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">
+              Choose your package.
+            </h2>
+            <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-gray-400 sm:text-lg">
+              Start with a clear idea of your budget. We can discuss the final
+              scope, features and price before work begins.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3">
+            {packages.map((item) => (
+              <article
+                key={item.name}
+                className={`relative flex flex-col rounded-3xl border p-7 transition sm:p-9 ${
+                  item.popular
+                    ? "border-[#c6ff00]/60 bg-[#141811] shadow-[0_0_50px_rgba(198,255,0,0.06)] lg:scale-[1.03]"
+                    : "border-white/10 bg-[#101211] hover:border-white/20"
+                }`}
+              >
+                {item.popular && (
+                  <div className="absolute right-5 top-5 rounded-full bg-[#c6ff00] px-3 py-1.5 text-xs font-black text-black">
+                    Most popular
+                  </div>
+                )}
+                <h3 className="text-2xl font-black">{item.name}</h3>
+                <p className="mt-3 min-h-14 text-sm leading-6 text-gray-400">{item.description}</p>
+                <div className="mt-7 flex flex-wrap items-end gap-2">
+                  <span className="text-5xl font-black tracking-tight">{item.price}</span>
+                  <span className="mb-2 text-sm text-gray-500">starting price</span>
+                </div>
+                <div className="my-7 border-t border-white/10" />
+                <div className="mb-4 text-sm font-bold">What&apos;s included</div>
+                <ul className="flex-1 space-y-4">
+                  {item.features.map((feature) => (
+                    <li key={feature} className="flex items-start gap-3 text-sm">
+                      <span className="font-black text-[#c6ff00]">✓</span>
+                      <span className="text-gray-300">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <a
+                  href="#contact"
+                  onClick={() => chooseService(item.name)}
+                  className={`mt-9 flex min-h-14 items-center justify-center rounded-full px-5 py-4 text-center text-sm font-black transition ${
+                    item.popular
+                      ? "bg-[#c6ff00] text-black hover:bg-white"
+                      : "border border-white/15 bg-white/5 text-white hover:border-[#c6ff00]/50 hover:text-[#c6ff00]"
+                  }`}
+                >
+                  Choose {item.name} ↗
+                </a>
+              </article>
+            ))}
+          </div>
+
+          <p className="mt-8 text-center text-xs leading-6 text-gray-500">
+            Prices are starting estimates. Final pricing depends on the agreed
+            scope and requirements. Domain, hosting and third-party fees may be additional.
+          </p>
+        </div>
+      </section>
+
+      {/* PROCESS */}
+      <section id="process" className="scroll-mt-24 border-y border-white/[0.06] bg-[#101211]">
+        <div className={sectionClass}>
+          <div className="mb-14 max-w-3xl">
+            <p className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-[#c6ff00]">
+              How it works <span className="ml-2 text-gray-600">/ 04</span>
+            </p>
+            <h2 className="text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">
+              From first idea
+              <br />
+              <span className="text-gray-500">to launch.</span>
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 xl:grid-cols-4">
+            {steps.map((step) => (
+              <article key={step.number} className="border-t-2 border-[#c6ff00]/30 pt-6 transition hover:border-[#c6ff00]">
+                <div className="text-sm font-black text-[#c6ff00]">{step.number}</div>
+                <h3 className="mt-5 text-xl font-bold">{step.title}</h3>
+                <p className="mt-3 text-sm leading-7 text-gray-400 sm:text-base">{step.description}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CONTACT FORM — SAVES TO SUPABASE */}
+      <section id="contact" className="scroll-mt-24 bg-[#090a0b]">
+        <div className={`${sectionClass} grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20`}>
+          <div>
+            <p className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-[#c6ff00]">
+              Let&apos;s work together <span className="ml-2 text-gray-600">/ 05</span>
+            </p>
+            <h2 className="text-4xl font-black leading-tight tracking-tight sm:text-5xl lg:text-6xl">
+              Let&apos;s build
+              <br />
+              something
+              <br />
+              <span className="text-[#c6ff00]">great.</span>
+            </h2>
+            <p className="mt-6 max-w-lg text-base leading-8 text-gray-400 sm:text-lg">
+              Tell us about your business and what you want to create. Submit
+              the form and your enquiry will be saved for follow-up.
+            </p>
+
+            <div className="mt-9 flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-[#101211] text-xl text-[#c6ff00]">
+                ✉
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Email</div>
+                <a href="mailto:hello@sellio.co.uk" className="mt-1 inline-block font-bold hover:text-[#c6ff00]">
+                  hello@sellio.co.uk
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <form
+            onSubmit={handleSubmit}
+            className="w-full rounded-3xl border border-white/10 bg-[#101211] p-5 shadow-2xl sm:p-8 lg:p-10"
+          >
+            <h3 className="text-2xl font-black sm:text-3xl">Request a quote<span className="text-[#c6ff00]">.</span></h3>
+            <p className="mt-2 text-sm leading-6 text-gray-400">
+              Complete the details below to submit your project enquiry.
+            </p>
+
+            <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <div>
+                <label htmlFor="name" className="mb-2 block text-sm font-semibold text-gray-200">Your name *</label>
+                <input
+                  id="name"
+                  name="name"
+                  autoComplete="name"
+                  required
+                  minLength={2}
+                  maxLength={120}
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="John Smith"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="email" className="mb-2 block text-sm font-semibold text-gray-200">Email address *</label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  maxLength={254}
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="john@example.com"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="business" className="mb-2 block text-sm font-semibold text-gray-200">Business name</label>
+                <input
+                  id="business"
+                  name="business"
+                  maxLength={200}
+                  value={business}
+                  onChange={(event) => setBusiness(event.target.value)}
+                  placeholder="Your company"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="service" className="mb-2 block text-sm font-semibold text-gray-200">What do you need? *</label>
+                <select
+                  id="service"
+                  name="service"
+                  required
+                  value={service}
+                  onChange={(event) => setService(event.target.value)}
+                  className={inputClass}
+                >
+                  <option>Business Website</option>
+                  <option>Business Websites</option>
+                  <option>Landing Page</option>
+                  <option>Landing Pages</option>
+                  <option>E-commerce Store</option>
+                  <option>E-commerce Stores</option>
+                  <option>Website Maintenance</option>
+                  <option>Starter</option>
+                  <option>Professional</option>
+                  <option>Online Store</option>
+                  <option>Not sure yet</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label htmlFor="budget" className="mb-2 block text-sm font-semibold text-gray-200">Your estimated budget</label>
+                <select
+                  id="budget"
+                  name="budget"
+                  value={budget}
+                  onChange={(event) => setBudget(event.target.value)}
+                  className={inputClass}
+                >
+                  <option>Under £199</option>
+                  <option>£199–£399</option>
+                  <option>£400–£799</option>
+                  <option>£800–£1,500</option>
+                  <option>£1,500+</option>
+                  <option>Not sure yet</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label htmlFor="details" className="mb-2 block text-sm font-semibold text-gray-200">Tell us about your project *</label>
+                <textarea
+                  id="details"
+                  name="details"
+                  required
+                  minLength={5}
+                  maxLength={5000}
+                  rows={5}
+                  value={details}
+                  onChange={(event) => setDetails(event.target.value)}
+                  placeholder="What does your business do? What should your website achieve?"
+                  className={`${inputClass} resize-y leading-6`}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="mt-6 flex min-h-14 w-full items-center justify-center rounded-full bg-[#c6ff00] px-6 py-4 font-black text-black transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? "Submitting..." : "Send my enquiry"}
+              {!submitting && <span className="ml-2">↗</span>}
+            </button>
+
+            {formMessage && (
+              <p
+                role="status"
+                aria-live="polite"
+                className={`mt-4 text-center text-sm font-medium ${
+                  formSuccess ? "text-[#c6ff00]" : "text-red-400"
+                }`}
+              >
+                {formMessage}
+              </p>
             )}
 
-          </div>
-
+            <p className="mt-4 text-center text-xs leading-5 text-gray-500">
+              Your enquiry will be submitted to Sellio for follow-up.
+            </p>
+          </form>
         </div>
-
       </section>
 
-      {/* SELL CTA */}
-      <section className="w-full px-4 pb-10 sm:px-6 lg:px-8">
-
-        <div className="rounded-3xl bg-black px-6 py-10 text-white sm:px-10">
-
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-
-            <div>
-
-              <h2 className="text-2xl font-black sm:text-3xl">
-                Have something to sell?
-              </h2>
-
-              <p className="mt-2 max-w-2xl text-gray-300">
-                Create your listing and reach buyers on Sellio.
-              </p>
-
-            </div>
-
-            <Link
-              href="/sell"
-              className="inline-flex w-fit rounded-xl bg-white px-6 py-3 font-bold text-black transition hover:bg-gray-200"
-            >
-              + Sell something
-            </Link>
-
+      {/* FOOTER */}
+      <footer className="border-t border-white/10 bg-[#070808] text-white">
+        <div className="grid gap-10 px-5 py-12 sm:px-8 md:grid-cols-2 lg:grid-cols-[1.3fr_0.7fr_0.7fr] lg:px-12 xl:px-16 2xl:px-24">
+          <div>
+            <a href="#home" className="inline-flex items-center gap-3 text-2xl font-black">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#c6ff00] text-black">S</span>
+              Sellio<span className="text-[#c6ff00]">.</span>
+            </a>
+            <p className="mt-5 max-w-md text-sm leading-7 text-gray-500">
+              Professional website design and development for businesses
+              ready to build their online presence.
+            </p>
           </div>
 
+          <div>
+            <h3 className="font-bold">Explore</h3>
+            <div className="mt-5 flex flex-col gap-3 text-sm text-gray-500">
+              <a className="transition hover:text-[#c6ff00]" href="#services">Services</a>
+              <a className="transition hover:text-[#c6ff00]" href="#pricing">Pricing</a>
+              <a className="transition hover:text-[#c6ff00]" href="#process">How it works</a>
+              <a className="transition hover:text-[#c6ff00]" href="#about">About Sellio</a>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-bold">Get in touch</h3>
+            <div className="mt-5 flex flex-col gap-3 text-sm text-gray-500">
+              <a className="transition hover:text-[#c6ff00]" href="#contact">Request a quote</a>
+              <a className="transition hover:text-[#c6ff00]" href="mailto:hello@sellio.co.uk">hello@sellio.co.uk</a>
+            </div>
+          </div>
         </div>
 
-      </section>
-
-      {/* FOOTER - STAYS AT THE BOTTOM */}
-      <footer className="mt-auto border-t border-gray-200 bg-white">
-
-        <div className="w-full px-4 py-8 sm:px-6 lg:px-8">
-
-          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-
-            <div>
-
-              <div className="text-2xl font-black">
-                Sellio
-              </div>
-
-              <p className="mt-1 text-sm text-gray-500">
-                Buy and sell anything, simply.
-              </p>
-
-            </div>
-
-            <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm font-medium text-gray-600">
-
-              <Link
-                href="/profile"
-                className="hover:text-black"
-              >
-                Profile
-              </Link>
-
-              <Link
-                href="/messages"
-                className="hover:text-black"
-              >
-                Messages
-              </Link>
-
-              <Link
-                href="/my-listings"
-                className="hover:text-black"
-              >
-                My Listings
-              </Link>
-
-              <Link
-                href="/favourites"
-                className="hover:text-black"
-              >
-                Favourites
-              </Link>
-
-              <Link
-                href="/sell"
-                className="hover:text-black"
-              >
-                Sell
-              </Link>
-
-            </div>
-
-          </div>
-
-          <div className="mt-6 border-t border-gray-100 pt-5 text-xs text-gray-400">
-            © {new Date().getFullYear()} Sellio. All rights reserved.
-          </div>
-
+        <div className="flex flex-col justify-between gap-3 border-t border-white/10 px-5 py-6 text-xs text-gray-600 sm:flex-row sm:px-8 lg:px-12 xl:px-16 2xl:px-24">
+          <span>© {new Date().getFullYear()} Sellio. All rights reserved.</span>
+          <a className="transition hover:text-[#c6ff00]" href="#home">Back to top ↑</a>
         </div>
-
       </footer>
-
     </main>
   );
 }
