@@ -1,8 +1,11 @@
+
 "use client";
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+
+const ADMIN_EMAIL = "iliebogdan01@yahoo.com";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,18 +40,17 @@ export default function LoginPage() {
         return;
       }
 
-      if (
-        data.user.email?.toLowerCase() !==
-        process.env.NEXT_PUBLIC_ADMIN_EMAIL?.trim().toLowerCase()
-      ) {
+      const loggedInEmail = data.user.email?.trim().toLowerCase();
+
+      if (loggedInEmail !== ADMIN_EMAIL.toLowerCase()) {
         await supabase.auth.signOut();
         setErrorMessage(
-          "Acest cont nu este autorizat ca administrator."
+          "Contul conectat nu corespunde adresei autorizate pentru administrator."
         );
         return;
       }
 
-      router.push("/admin");
+      router.replace("/admin");
       router.refresh();
     } catch (error) {
       setErrorMessage(
@@ -78,7 +80,7 @@ export default function LoginPage() {
         <h1 className="mb-3 text-3xl font-black">Conectare</h1>
 
         <p className="mb-8 leading-6 text-white/55">
-          Conectează-te cu adresa de e-mail autorizată pentru panoul Sellio.
+          Conectează-te cu adresa autorizată pentru panoul Sellio.
         </p>
 
         <label htmlFor="email" className="mb-2 block text-sm font-semibold">
