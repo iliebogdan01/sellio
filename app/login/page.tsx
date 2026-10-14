@@ -1,11 +1,9 @@
-
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-
-const ADMIN_EMAIL = "iliebogdan01@yahoo.com";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,8 +14,11 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
+
     setErrorMessage("");
     setLoading(true);
 
@@ -29,25 +30,13 @@ export default function LoginPage() {
 
       if (error) {
         setErrorMessage(
-          error.message === "Invalid login credentials"
-            ? "Adresa de e-mail sau parola sunt incorecte."
-            : error.message
+          "Email sau parolă incorectă. Verifică datele și încearcă din nou."
         );
         return;
       }
 
       if (!data.user) {
-        setErrorMessage("Autentificarea nu a returnat un utilizator.");
-        return;
-      }
-
-      const loggedInEmail = data.user.email?.trim().toLowerCase();
-
-      if (loggedInEmail !== ADMIN_EMAIL.toLowerCase()) {
-        await supabase.auth.signOut();
-        setErrorMessage(
-          "Contul conectat nu corespunde adresei autorizate pentru administrator."
-        );
+        setErrorMessage("Autentificarea nu a reușit.");
         return;
       }
 
@@ -55,7 +44,7 @@ export default function LoginPage() {
       router.refresh();
     } catch {
       setErrorMessage(
-        "A apărut o eroare la conectare. Încearcă din nou."
+        "A apărut o eroare. Verifică conexiunea și încearcă din nou."
       );
     } finally {
       setLoading(false);
@@ -63,48 +52,48 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#111111] px-4 py-10 text-white">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#1b1b1b] p-6 shadow-2xl sm:p-8">
-        <a
+    <main className="flex min-h-screen items-center justify-center bg-gray-100 px-4 py-10">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg">
+        <Link
           href="/"
-          className="mb-8 inline-block text-2xl font-black tracking-tight"
+          className="mb-6 block text-center text-4xl font-extrabold text-black"
         >
-          Sellio<span className="text-orange-500">.</span>
-        </a>
+          Sellio
+        </Link>
 
-        <h1 className="mb-3 text-3xl font-black">
-          Conectare administrator
+        <h1 className="mb-2 text-center text-2xl font-bold text-gray-900">
+          Autentificare
         </h1>
 
-        <p className="mb-8 leading-6 text-white/60">
-          Conectează-te cu adresa autorizată pentru panoul de administrare Sellio.
+        <p className="mb-6 text-center text-sm text-gray-500">
+          Conectează-te la contul tău Sellio.
         </p>
 
-        <form onSubmit={handleLogin} className="space-y-5">
+        <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label
               htmlFor="email"
-              className="mb-2 block text-sm font-semibold"
+              className="mb-1 block text-sm font-medium text-gray-700"
             >
-              Adresă de e-mail
+              Email
             </label>
 
             <input
               id="email"
               type="email"
-              autoComplete="username"
-              required
+              autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="Adresa de e-mail"
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 outline-none transition focus:border-orange-500"
+              placeholder="Adresa ta de email"
+              required
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-900 outline-none focus:border-black"
             />
           </div>
 
           <div>
             <label
               htmlFor="password"
-              className="mb-2 block text-sm font-semibold"
+              className="mb-1 block text-sm font-medium text-gray-700"
             >
               Parolă
             </label>
@@ -113,38 +102,48 @@ export default function LoginPage() {
               id="password"
               type="password"
               autoComplete="current-password"
-              required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Parola contului"
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 outline-none transition focus:border-orange-500"
+              placeholder="Parola ta"
+              required
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-900 outline-none focus:border-black"
             />
           </div>
 
           {errorMessage && (
-            <div
+            <p
               role="alert"
-              className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
+              className="rounded-lg bg-red-50 p-3 text-sm text-red-700"
             >
               {errorMessage}
-            </div>
+            </p>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-orange-500 px-4 py-3 font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg bg-black px-4 py-3 font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? "Se conectează..." : "Conectare"}
           </button>
         </form>
 
-        <a
+        <p className="mt-6 text-center text-sm text-gray-600">
+          Nu ai cont?{" "}
+          <Link
+            href="/register"
+            className="font-semibold text-black underline"
+          >
+            Creează un cont
+          </Link>
+        </p>
+
+        <Link
           href="/"
-          className="mt-6 block text-center text-sm text-white/60 transition hover:text-white"
+          className="mt-5 block text-center text-sm text-gray-500 hover:text-black"
         >
-          Înapoi la Sellio
-        </a>
+          ← Înapoi la Sellio
+        </Link>
       </div>
     </main>
   );
