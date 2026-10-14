@@ -9,6 +9,7 @@ const ADMIN_EMAIL = "iliebogdan01@yahoo.com";
 
 export default function LoginPage() {
   const router = useRouter();
+  const supabase = createClient();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,22 +22,22 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const supabase = createClient();
-
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
 
       if (error) {
-        setErrorMessage("Autentificare eșuată: " + error.message);
+        setErrorMessage(
+          error.message === "Invalid login credentials"
+            ? "Adresa de e-mail sau parola sunt incorecte."
+            : error.message
+        );
         return;
       }
 
-      if (!data.session || !data.user) {
-        setErrorMessage(
-          "Autentificarea nu a creat o sesiune. Verifică utilizatorul în Supabase."
-        );
+      if (!data.user) {
+        setErrorMessage("Autentificarea nu a returnat un utilizator.");
         return;
       }
 
@@ -52,11 +53,9 @@ export default function LoginPage() {
 
       router.replace("/admin");
       router.refresh();
-    } catch (error) {
+    } catch {
       setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "A apărut o eroare la conectare."
+        "A apărut o eroare la conectare. Încearcă din nou."
       );
     } finally {
       setLoading(false);
@@ -64,79 +63,89 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#090a0b] p-6 text-white">
-      <form
-        onSubmit={handleLogin}
-        className="w-full max-w-md rounded-3xl border border-white/10 bg-[#111315] p-8 shadow-2xl"
-      >
-        <a href="/" className="mb-8 inline-block text-3xl font-black">
-          sellio<span className="text-[#c6ff00]">.</span>
+    <main className="flex min-h-screen items-center justify-center bg-[#111111] px-4 py-10 text-white">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#1b1b1b] p-6 shadow-2xl sm:p-8">
+        <a
+          href="/"
+          className="mb-8 inline-block text-2xl font-black tracking-tight"
+        >
+          Sellio<span className="text-orange-500">.</span>
         </a>
 
-        <p className="mb-3 text-xs font-bold uppercase tracking-[0.25em] text-[#c6ff00]">
-          Administrator
+        <h1 className="mb-3 text-3xl font-black">
+          Conectare administrator
+        </h1>
+
+        <p className="mb-8 leading-6 text-white/60">
+          Conectează-te cu adresa autorizată pentru panoul de administrare Sellio.
         </p>
 
-        <h1 className="mb-3 text-3xl font-black">Conectare</h1>
+        <form onSubmit={handleLogin} className="space-y-5">
+          <div>
+            <label
+              htmlFor="email"
+              className="mb-2 block text-sm font-semibold"
+            >
+              Adresă de e-mail
+            </label>
 
-        <p className="mb-8 leading-6 text-white/55">
-          Conectează-te cu adresa autorizată pentru panoul Sellio.
-        </p>
-
-        <label htmlFor="email" className="mb-2 block text-sm font-semibold">
-          Adresă de e-mail
-        </label>
-
-        <input
-          id="email"
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          required
-          className="mb-5 w-full rounded-xl border border-white/15 bg-black/30 p-3 text-white outline-none focus:border-[#c6ff00]"
-          placeholder="Email"
-        />
-
-        <label htmlFor="password" className="mb-2 block text-sm font-semibold">
-          Parolă
-        </label>
-
-        <input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-          className="mb-5 w-full rounded-xl border border-white/15 bg-black/30 p-3 text-white outline-none focus:border-[#c6ff00]"
-          placeholder="Parolă"
-        />
-
-        {errorMessage && (
-          <div
-            role="alert"
-            className="mb-5 rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm leading-6 text-red-300"
-          >
-            {errorMessage}
+            <input
+              id="email"
+              type="email"
+              autoComplete="username"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Adresa de e-mail"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 outline-none transition focus:border-orange-500"
+            />
           </div>
-        )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-xl bg-[#c6ff00] p-3 font-black text-black transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {loading ? "Se conectează..." : "Conectare"}
-        </button>
+          <div>
+            <label
+              htmlFor="password"
+              className="mb-2 block text-sm font-semibold"
+            >
+              Parolă
+            </label>
+
+            <input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Parola contului"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 outline-none transition focus:border-orange-500"
+            />
+          </div>
+
+          {errorMessage && (
+            <div
+              role="alert"
+              className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
+            >
+              {errorMessage}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-xl bg-orange-500 px-4 py-3 font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? "Se conectează..." : "Conectare"}
+          </button>
+        </form>
 
         <a
           href="/"
-          className="mt-6 block text-center text-sm text-white/50 hover:text-[#c6ff00]"
+          className="mt-6 block text-center text-sm text-white/60 transition hover:text-white"
         >
-          ← Înapoi la pagina principală
+          Înapoi la Sellio
         </a>
-      </form>
+      </div>
     </main>
   );
 }
