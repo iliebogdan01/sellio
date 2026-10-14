@@ -1,142 +1,232 @@
-"use client";
 
-import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
 
 const ADMIN_EMAIL = "iliebogdan01@yahoo.com";
 
-export default function LoginPage() {
-  const router = useRouter();
+type Listing = {
+  id: number;
+  title: string | null;
+  price: number | string | null;
+  location: string | null;
+  category: string | null;
+  promoted: boolean | null;
+  promoted_until: string | null;
+  created_at: string | null;
+  user_id: string | null;
+};
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [loading, setLoading] = useState(false);
+function formatPrice(price: number | string | null) {
+  return `£${Number(price ?? 0).toLocaleString("en-GB", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setErrorMessage("");
-    setLoading(true);
+function isPromoted(listing: Listing) {
+  return Boolean(
+    listing.promoted &&
+      listing.promoted_until &&
+      new Date(listing.promoted_until).getTime() > Date.now()
+  );
+}
 
-    try {
-      const supabase = createClient();
+export default async function AdminPage() {
+  const supabase = await createClient();
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
 
-      if (error) {
-        setErrorMessage("Autentificare eșuată: " + error.message);
-        return;
-      }
-
-      if (!data.session || !data.user) {
-        setErrorMessage(
-          "Autentificarea nu a creat o sesiune. Verifică utilizatorul în Supabase."
-        );
-        return;
-      }
-
-      const adminEmail = ADMIN_EMAIL.trim().toLowerCase();
-      const loggedInEmail = data.user.email?.trim().toLowerCase();
-
-      if (!loggedInEmail || loggedInEmail !== adminEmail) {
-        await supabase.auth.signOut();
-        setErrorMessage(
-          "Contul conectat nu corespunde adresei autorizate pentru administrator."
-        );
-        return;
-      }
-
-      router.replace("/admin");
-      router.refresh();
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "A apărut o eroare la conectare."
-      );
-    } finally {
-      setLoading(false);
-    }
+  if (authError || !user) {
+    redirect("/login");
   }
 
+  if (user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+    redirect("/");
+  }
+
+  const { data, error } = await supabase
+    .from("listings")
+    .select(
+      "id, title, price, location, category, promoted, promoted_until, created_at, user_id"
+    )
+    .order("created_at", { ascending: false });
+
+  const listings = (data ?? []) as Listing[];
+  const activePromotions = listings.filter(isPromoted).length;
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#090a0b] p-6 text-white">
-      <form
-        onSubmit={handleLogin}
-        className="w-full max-w-md rounded-3xl border border-white/10 bg-[#111315] p-8 shadow-2xl"
-      >
-        <a href="/" className="mb-8 inline-block text-3xl font-black">
-          sellio<span className="text-[#c6ff00]">.</span>
-        </a>
+    <main className="min-h-screen bg-[#111111] text-white">
+      <header className="sticky top-0 z-50 border-b border-[#303030] bg-[#080808]">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-5">
+          <Link href="/admin" className="text-3xl font-black">
+            Sellio <span className="text-gray-500">Admin</span>
+          </Link>
 
-        <p className="mb-3 text-xs font-bold uppercase tracking-[0.25em] text-[#c6ff00]">
-          Administrator
-        </p>
+          <div className="flex flex-wrap gap-3">
+            <a
+              href="https://sellio.website"
+              className="rounded-xl bg-white px-4 py-2 font-bold text-black hover:bg-gray-200"
+            >
+              Open Sellio
+            </a>
 
-        <h1 className="mb-3 text-3xl font-black">Conectare</h1>
-
-        <p className="mb-8 leading-6 text-white/55">
-          Conectează-te cu adresa autorizată pentru panoul Sellio.
-        </p>
-
-        <label htmlFor="email" className="mb-2 block text-sm font-semibold">
-          Adresă de e-mail
-        </label>
-
-        <input
-          id="email"
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          required
-          className="mb-5 w-full rounded-xl border border-white/15 bg-black/30 p-3 text-white outline-none focus:border-[#c6ff00]"
-          placeholder="Email"
-        />
-
-        <label htmlFor="password" className="mb-2 block text-sm font-semibold">
-          Parolă
-        </label>
-
-        <input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-          className="mb-5 w-full rounded-xl border border-white/15 bg-black/30 p-3 text-white outline-none focus:border-[#c6ff00]"
-          placeholder="Parolă"
-        />
-
-        {errorMessage && (
-          <div
-            role="alert"
-            className="mb-5 rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm leading-6 text-red-300"
-          >
-            {errorMessage}
+            <form action="/auth/signout" method="post">
+              <button
+                type="submit"
+                className="rounded-xl bg-[#242424] px-4 py-2 font-bold hover:bg-[#333333]"
+              >
+                Sign out
+              </button>
+            </form>
           </div>
-        )}
+        </div>
+      </header>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-xl bg-[#c6ff00] p-3 font-black text-black transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {loading ? "Se conectează..." : "Conectare"}
-        </button>
+      <section className="mx-auto max-w-7xl px-5 py-10">
+        <p className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500">
+          Sellio Administration
+        </p>
 
-        <a
-          href="/"
-          className="mt-6 block text-center text-sm text-white/50 hover:text-[#c6ff00]"
-        >
-          ← Înapoi la pagina principală
-        </a>
-      </form>
+        <h1 className="mt-2 text-4xl font-black">Admin Dashboard</h1>
+
+        <p className="mt-3 text-gray-400">
+          Signed in as {user.email}
+        </p>
+
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl border border-[#303030] bg-[#191919] p-6">
+            <p className="text-sm text-gray-400">Total listings</p>
+            <p className="mt-2 text-4xl font-black">{listings.length}</p>
+          </div>
+
+          <div className="rounded-2xl border border-[#303030] bg-[#191919] p-6">
+            <p className="text-sm text-gray-400">Active promotions</p>
+            <p className="mt-2 text-4xl font-black">{activePromotions}</p>
+          </div>
+
+          <div className="rounded-2xl border border-[#303030] bg-[#191919] p-6">
+            <p className="text-sm text-gray-400">Admin status</p>
+            <p className="mt-2 text-2xl font-black text-green-400">
+              Authenticated
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-10 overflow-hidden rounded-2xl border border-[#303030] bg-[#191919]">
+          <div className="border-b border-[#303030] p-5">
+            <h2 className="text-xl font-black">All listings</h2>
+            <p className="mt-1 text-sm text-gray-400">
+              All listings available to this Supabase session.
+            </p>
+          </div>
+
+          {error ? (
+            <div className="p-6 text-red-300">
+              <p className="font-bold">Could not load listings.</p>
+              <p className="mt-2 text-sm">{error.message}</p>
+            </div>
+          ) : listings.length === 0 ? (
+            <p className="p-8 text-gray-400">No listings found.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[850px] text-left text-sm">
+                <thead className="bg-[#222222] text-gray-300">
+                  <tr>
+                    <th className="p-4">ID</th>
+                    <th className="p-4">Listing</th>
+                    <th className="p-4">Price</th>
+                    <th className="p-4">Category</th>
+                    <th className="p-4">Location</th>
+                    <th className="p-4">Promotion</th>
+                    <th className="p-4">Actions</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {listings.map((listing) => (
+                    <tr
+                      key={listing.id}
+                      className="border-t border-[#303030] hover:bg-[#202020]"
+                    >
+                      <td className="p-4 text-gray-400">
+                        {listing.id}
+                      </td>
+
+                      <td className="max-w-[260px] p-4 font-bold">
+                        {listing.title || "Untitled listing"}
+                      </td>
+
+                      <td className="whitespace-nowrap p-4">
+                        {formatPrice(listing.price)}
+                      </td>
+
+                      <td className="p-4">
+                        {listing.category || "—"}
+                      </td>
+
+                      <td className="p-4">
+                        {listing.location || "—"}
+                      </td>
+
+                      <td className="p-4">
+                        {isPromoted(listing) ? (
+                          <span className="rounded-lg bg-orange-500/15 px-2 py-1 font-bold text-orange-400">
+                            Active
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">
+                            Inactive
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <Link
+                            href={`/listing?id=${encodeURIComponent(String(listing.id))}`}
+                            className="font-bold underline underline-offset-4 hover:text-gray-300"
+                          >
+                            View
+                          </Link>
+
+                          <Link
+                            href={`/edit-listing?id=${encodeURIComponent(String(listing.id))}`}
+                            className="font-bold text-gray-300 underline underline-offset-4 hover:text-white"
+                          >
+                            Edit
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-8 flex flex-wrap gap-3">
+          <Link
+            href="/my-listings"
+            className="rounded-xl bg-[#242424] px-5 py-3 font-bold hover:bg-[#333333]"
+          >
+            My Listings
+          </Link>
+
+          <Link
+            href="/"
+            className="rounded-xl bg-white px-5 py-3 font-bold text-black hover:bg-gray-200"
+          >
+            Home
+          </Link>
+        </div>
+      </section>
     </main>
   );
 }
